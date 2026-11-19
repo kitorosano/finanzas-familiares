@@ -1,4 +1,4 @@
-export const AUDIT_ACTIONS = ['create', 'update', 'delete', 'void'] as const;
+import type { AUDIT_ACTIONS } from './audit.constants.js';
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

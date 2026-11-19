@@ -1,3 +1,5 @@
+import type { CurrencyCode } from '../../types/money.js';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -7,7 +9,7 @@ export interface AuthUser {
 export interface AuthHousehold {
   id: string;
   name: string;
-  baseCurrencyCode: string;
+  baseCurrencyCode: CurrencyCode;
   role: string;
 }
 
@@ -49,7 +51,7 @@ export interface UserRow {
 export interface HouseholdRow {
   household_id: string;
   household_name: string;
-  base_currency_code: string;
+  base_currency_code: CurrencyCode;
   role: string;
 }
 
@@ -72,7 +74,7 @@ export interface RefreshRow {
   display_name: string;
   is_active: boolean;
   household_name: string;
-  base_currency_code: string;
+  base_currency_code: CurrencyCode;
   role: string;
 }
 
@@ -89,7 +91,7 @@ export interface AuthenticatedSessionRow {
   display_name: string;
   household_id: string;
   household_name: string;
-  base_currency_code: string;
+  base_currency_code: CurrencyCode;
   role: string;
 }
 

@@ -1,12 +1,13 @@
 
 import { buildApp } from './app.js';
+import { isValidPort } from './utils/validation.js';
 
 const app = buildApp();
 
 const port = Number(process.env.PORT ?? '3000');
 const host = process.env.HOST ?? '0.0.0.0';
 
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
+if (!isValidPort(port)) {
   throw new Error('Invalid PORT configuration');
 }
 

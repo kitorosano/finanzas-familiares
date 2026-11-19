@@ -5,7 +5,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 
 import { env } from './config/env.js';
-import { db } from './db.js';
+import { db } from './db/pool.js';
 import { registerApiErrorHandler } from './errors/error-handler.js';
 import { accountRoutes } from './modules/accounts/account.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';

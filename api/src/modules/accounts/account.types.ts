@@ -1,17 +1,17 @@
-export const ACCOUNT_TYPES = [
-  'cash',
-  'bank',
-  'digital_wallet',
-  'credit_card',
-  'investment',
-  'other',
-] as const;
+import type {
+  BalanceConversionStatus,
+  CurrencyCode,
+} from '../../types/money.js';
+import type { ACCOUNT_TYPES } from './account.constants.js';
 
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
-export const CURRENCY_CODES = ['UYU', 'USD', 'ARS', 'BRL'] as const;
-
-export type CurrencyCode = (typeof CURRENCY_CODES)[number];
+export interface AccountValidationRow {
+  id: string;
+  account_type: AccountType;
+  currency_code: CurrencyCode;
+  is_active: boolean;
+}
 
 export interface ListAccountsQuery {
   accountType?: AccountType;
@@ -42,11 +42,7 @@ export interface AccountRow {
   baseCurrencyCode: CurrencyCode;
   exchangeRateToBase: string | null;
   balanceBase: string | null;
-  conversionStatus:
-    | 'base_currency'
-    | 'zero_balance'
-    | 'converted'
-    | 'missing_rate';
+  conversionStatus: BalanceConversionStatus;
 
   statementClosingDay: number | null;
   paymentDueDay: number | null;

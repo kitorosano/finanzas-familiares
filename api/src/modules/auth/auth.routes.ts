@@ -1,12 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { AppError } from '../../errors/app-error.js';
+import { ERROR_CODES } from '../../errors/error-codes.js';
 
-import { loginUser, refreshSession, revokeSession } from './auth.service.js';
 import {
   REFRESH_COOKIE_NAME,
   REFRESH_COOKIE_OPTIONS,
 } from './auth.constants.js';
+import { AUTH_LOGIN_SCHEMA } from './auth.schema.js';
+import { loginUser, refreshSession, revokeSession } from './auth.service.js';
 import { clearRefreshCookie } from './auth.utils.js';
 
 import type { LoginBody } from './auth.types.js';
@@ -21,31 +23,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           timeWindow: 15 * 60 * 1000,
         },
       },
-      schema: {
-        body: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['email', 'password'],
-          properties: {
-            email: {
-              type: 'string',
-              minLength: 3,
-              maxLength: 254,
-              pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
-            },
-            password: {
-              type: 'string',
-              minLength: 1,
-              maxLength: 128,
-            },
-            householdId: {
-              type: 'string',
-              pattern:
-                '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-            },
-          },
-        },
-      },
+      schema: AUTH_LOGIN_SCHEMA,
     },
     async (request, reply) => {
       const result = await loginUser(
@@ -87,7 +65,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         throw new AppError(
           401,
-          'REFRESH_TOKEN_MISSING',
+          ERROR_CODES.REFRESH_TOKEN_MISSING,
           'No existe una sesión para renovar',
         );
       }
@@ -118,7 +96,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       if (!request.auth) {
         throw new AppError(
           401,
-          'UNAUTHORIZED',
+          ERROR_CODES.UNAUTHORIZED,
           'Se requiere una sesión autenticada',
         );
       }
@@ -140,7 +118,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       if (!request.auth) {
         throw new AppError(
           401,
-          'UNAUTHORIZED',
+          ERROR_CODES.UNAUTHORIZED,
           'Se requiere una sesión autenticada',
         );
       }

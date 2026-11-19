@@ -1,8 +1,11 @@
-function requiredSecret(name: string): string {
-  const value = process.env[name];
+import { requiredEnv } from '../utils/env.js';
 
-  if (!value || Buffer.byteLength(value, 'utf8') < 32) {
-    throw new Error(`${name} must be configured with at least 32 bytes`);
+function requiredSecret(name: string): string {
+  const errorMessage = `${name} must be configured with at least 32 bytes`;
+  const value = requiredEnv(name, errorMessage);
+
+  if (Buffer.byteLength(value, 'utf8') < 32) {
+    throw new Error(errorMessage);
   }
 
   return value;
@@ -21,6 +24,6 @@ export const env = Object.freeze({
   jwtAccessSecret: requiredSecret('JWT_ACCESS_SECRET'),
   refreshTokenPepper: requiredSecret('REFRESH_TOKEN_PEPPER'),
 
-  accessTokenTtlSeconds: 15 * 60,
-  refreshTokenTtlSeconds: 30 * 24 * 60 * 60,
+  accessTokenTtlSeconds: 15 * 60, // 15 minutes
+  refreshTokenTtlSeconds: 30 * 24 * 60 * 60, // 30 days
 });

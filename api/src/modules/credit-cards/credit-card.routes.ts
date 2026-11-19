@@ -3,6 +3,13 @@ import type { FastifyPluginAsync } from 'fastify';
 import { getHouseholdScope } from '../authorization/household-context.js';
 
 import {
+  CREDIT_CARD_DETAIL_SCHEMA,
+  CREDIT_CARD_LIST_SCHEMA,
+  CREDIT_CARD_PAYMENT_SCHEMA,
+  CREDIT_CARD_STATEMENT_DETAIL_SCHEMA,
+  CREDIT_CARD_STATEMENTS_SCHEMA,
+} from './credit-card.schema.js';
+import {
   getCreditCardById,
   getCreditCardStatementDetail,
   listCreditCards,
@@ -25,21 +32,6 @@ interface CreditCardStatementParams extends CreditCardParams {
   statementId: string;
 }
 
-const uuidSchema = {
-  type: 'string',
-  pattern:
-    '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-};
-
-const cardParamsSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['cardAccountId'],
-  properties: {
-    cardAccountId: uuidSchema,
-  },
-};
-
 export const creditCardRoutes: FastifyPluginAsync = async (app) => {
   // =======================================================
   // GET /credit-cards
@@ -50,22 +42,7 @@ export const creditCardRoutes: FastifyPluginAsync = async (app) => {
     '/',
     {
       preHandler: [app.authenticate],
-      schema: {
-        querystring: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            currencyCode: {
-              type: 'string',
-              enum: ['UYU', 'USD', 'ARS', 'BRL'],
-            },
-            includeInactive: {
-              type: 'boolean',
-              default: false,
-            },
-          },
-        },
-      },
+      schema: CREDIT_CARD_LIST_SCHEMA,
     },
     async (request) => {
       const scope = getHouseholdScope(request);
@@ -88,39 +65,7 @@ export const creditCardRoutes: FastifyPluginAsync = async (app) => {
     '/:cardAccountId/statements',
     {
       preHandler: [app.authenticate],
-      schema: {
-        params: cardParamsSchema,
-        querystring: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            status: {
-              type: 'string',
-              enum: ['pending', 'partially_paid', 'paid'],
-            },
-            dueFrom: {
-              type: 'string',
-              format: 'date',
-            },
-            dueTo: {
-              type: 'string',
-              format: 'date',
-            },
-            limit: {
-              type: 'integer',
-              minimum: 1,
-              maximum: 100,
-              default: 50,
-            },
-            offset: {
-              type: 'integer',
-              minimum: 0,
-              maximum: 100000,
-              default: 0,
-            },
-          },
-        },
-      },
+      schema: CREDIT_CARD_STATEMENTS_SCHEMA,
     },
     async (request) => {
       const scope = getHouseholdScope(request);
@@ -142,17 +87,7 @@ export const creditCardRoutes: FastifyPluginAsync = async (app) => {
     '/:cardAccountId/statements/:statementId',
     {
       preHandler: [app.authenticate],
-      schema: {
-        params: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['cardAccountId', 'statementId'],
-          properties: {
-            cardAccountId: uuidSchema,
-            statementId: uuidSchema,
-          },
-        },
-      },
+      schema: CREDIT_CARD_STATEMENT_DETAIL_SCHEMA,
     },
     async (request) => {
       const scope = getHouseholdScope(request);
@@ -174,9 +109,7 @@ export const creditCardRoutes: FastifyPluginAsync = async (app) => {
     '/:cardAccountId',
     {
       preHandler: [app.authenticate],
-      schema: {
-        params: cardParamsSchema,
-      },
+      schema: CREDIT_CARD_DETAIL_SCHEMA,
     },
     async (request) => {
       const scope = getHouseholdScope(request);
@@ -199,33 +132,7 @@ export const creditCardRoutes: FastifyPluginAsync = async (app) => {
     '/:cardAccountId/payments',
     {
       preHandler: [app.authenticate],
-      schema: {
-        params: cardParamsSchema,
-        body: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['sourceAccountId', 'amount'],
-          properties: {
-            sourceAccountId: uuidSchema,
-            amount: {
-              type: 'number',
-              exclusiveMinimum: 0,
-            },
-            exchangeRateToBase: {
-              type: 'number',
-              exclusiveMinimum: 0,
-            },
-            occurredAt: {
-              type: 'string',
-              format: 'date-time',
-            },
-            notes: {
-              type: ['string', 'null'],
-              maxLength: 5000,
-            },
-          },
-        },
-      },
+      schema: CREDIT_CARD_PAYMENT_SCHEMA,
     },
     async (request, reply) => {
       const result = await payCreditCard(request);

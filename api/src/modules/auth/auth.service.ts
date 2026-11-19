@@ -4,9 +4,26 @@ import type { FastifyInstance } from 'fastify';
 
 import type { PoolClient } from 'pg';
 
-import { db } from '../../db.js';
+import { db } from '../../db/pool.js';
 import { AppError } from '../../errors/app-error.js';
-import { ARGON2_OPTIONS, REFRESH_TTL_MS } from './auth.constants.js';
+import { ERROR_CODES } from '../../errors/error-codes.js';
+import {
+  consumeRefreshToken,
+  createRefreshToken as insertRefreshToken,
+  createSession as insertSession,
+  findRefreshSessionForUpdate,
+  findUserByEmail,
+  insertReplacementRefreshToken,
+  linkReplacementRefreshToken,
+  listUserHouseholds,
+  revokeRefreshTokensForSession,
+  revokeRefreshTokensOnLogout,
+  revokeSessionForInactiveUser,
+  revokeSessionOnLogout,
+  revokeSessionOnRefreshTokenReuse,
+  updateSessionLastUsed,
+} from './auth.db.js';
+import { REFRESH_TTL_MS } from './auth.constants.js';
 import {
   createAccessToken,
   createAuthResponse,
@@ -19,12 +36,9 @@ import {
 
 import type {
   AuthUser,
-  CreatedIdRow,
   HouseholdRow,
-  RefreshRow,
   SessionMetadata,
   SessionResult,
-  UserRow,
 } from './auth.types.js';
 
 async function createSession(
@@ -36,28 +50,16 @@ async function createSession(
 ): Promise<SessionResult> {
   const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
 
-  const sessionResult = await client.query<CreatedIdRow>(
-    `
-      INSERT INTO auth_sessions (
-        household_id,
-        user_id,
-        expires_at,
-        ip_address,
-        user_agent
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id
-    `,
-    [
-      household.household_id,
-      user.id,
-      expiresAt,
-      metadata.ipAddress,
-      metadata.userAgent,
-    ],
+  const session = await insertSession(
+    client,
+    household.household_id,
+    user.id,
+    expiresAt,
+    metadata.ipAddress,
+    metadata.userAgent,
   );
 
-  const sessionId = sessionResult.rows[0]?.id;
+  const sessionId = session?.id;
 
   if (!sessionId) {
     throw new Error('Could not create authentication session');
@@ -65,16 +67,11 @@ async function createSession(
 
   const refreshToken = createRefreshToken();
 
-  await client.query(
-    `
-      INSERT INTO auth_refresh_tokens (
-        session_id,
-        token_hash,
-        expires_at
-      )
-      VALUES ($1, $2, $3)
-    `,
-    [sessionId, hashRefreshToken(refreshToken), expiresAt],
+  await insertRefreshToken(
+    client,
+    sessionId,
+    hashRefreshToken(refreshToken),
+    expiresAt,
   );
 
   const accessToken = createAccessToken(
@@ -105,22 +102,7 @@ export async function loginUser(
 ): Promise<SessionResult> {
   const normalizedEmail = email.trim().toLowerCase();
 
-  const userResult = await db.query<UserRow>(
-    `
-      SELECT
-        id,
-        email,
-        display_name,
-        password_hash,
-        is_active
-      FROM users
-      WHERE lower(btrim(email)) = $1
-      LIMIT 1
-    `,
-    [normalizedEmail],
-  );
-
-  const user = userResult.rows[0];
+  const user = await findUserByEmail(normalizedEmail);
 
   // Perform an Argon2 verification even when the email
   // doesn't exist or the user has no password configured.
@@ -134,28 +116,12 @@ export async function loginUser(
     throw invalidCredentialsError();
   }
 
-  const membershipsResult = await db.query<HouseholdRow>(
-    `
-      SELECT
-        hm.household_id,
-        h.name AS household_name,
-        h.base_currency_code,
-        hm.role
-      FROM household_members hm
-      JOIN households h
-        ON h.id = hm.household_id
-      WHERE hm.user_id = $1
-      ORDER BY hm.joined_at, hm.household_id
-    `,
-    [user.id],
-  );
-
-  const memberships = membershipsResult.rows;
+  const memberships = await listUserHouseholds(user.id);
 
   if (memberships.length === 0) {
     throw new AppError(
       403,
-      'NO_HOUSEHOLD_MEMBERSHIP',
+      ERROR_CODES.NO_HOUSEHOLD_MEMBERSHIP,
       'El usuario no pertenece a ningún hogar activo',
     );
   }
@@ -170,7 +136,7 @@ export async function loginUser(
     if (!household) {
       throw new AppError(
         403,
-        'HOUSEHOLD_ACCESS_DENIED',
+        ERROR_CODES.HOUSEHOLD_ACCESS_DENIED,
         'El usuario no tiene acceso al hogar solicitado',
       );
     }
@@ -179,7 +145,7 @@ export async function loginUser(
   } else {
     throw new AppError(
       409,
-      'HOUSEHOLD_SELECTION_REQUIRED',
+      ERROR_CODES.HOUSEHOLD_SELECTION_REQUIRED,
       'Se debe seleccionar un hogar para iniciar sesión',
     );
   }
@@ -233,84 +199,30 @@ export async function refreshSession(
     await client.query('BEGIN');
     transactionOpen = true;
 
-    const result = await client.query<RefreshRow>(
-      `
-        SELECT
-          rt.id AS refresh_token_id,
-          rt.session_id,
-          rt.expires_at AS token_expires_at,
-          rt.used_at AS token_used_at,
-          rt.revoked_at AS token_revoked_at,
-
-          s.user_id,
-          s.household_id,
-          s.expires_at AS session_expires_at,
-          s.revoked_at AS session_revoked_at,
-
-          u.email,
-          u.display_name,
-          u.is_active,
-
-          h.name AS household_name,
-          h.base_currency_code,
-          hm.role
-
-        FROM auth_refresh_tokens rt
-        JOIN auth_sessions s
-          ON s.id = rt.session_id
-        JOIN users u
-          ON u.id = s.user_id
-        JOIN household_members hm
-          ON hm.household_id = s.household_id
-         AND hm.user_id = s.user_id
-        JOIN households h
-          ON h.id = s.household_id
-
-        WHERE rt.token_hash = $1
-
-        FOR UPDATE OF rt, s
-      `,
-      [hashRefreshToken(rawRefreshToken)],
+    const row = await findRefreshSessionForUpdate(
+      client,
+      hashRefreshToken(rawRefreshToken),
     );
-
-    const row = result.rows[0];
 
     if (!row) {
       throw new AppError(
         401,
-        'INVALID_REFRESH_TOKEN',
+        ERROR_CODES.INVALID_REFRESH_TOKEN,
         'La sesión no es válida o ha expirado',
       );
     }
 
     // Reusing an already rotated token revokes the complete session.
     if (row.token_used_at !== null) {
-      await client.query(
-        `
-          UPDATE auth_sessions
-          SET
-            revoked_at = COALESCE(revoked_at, NOW()),
-            revoked_reason = 'refresh_token_reuse'
-          WHERE id = $1
-        `,
-        [row.session_id],
-      );
-
-      await client.query(
-        `
-          UPDATE auth_refresh_tokens
-          SET revoked_at = COALESCE(revoked_at, NOW())
-          WHERE session_id = $1
-        `,
-        [row.session_id],
-      );
+      await revokeSessionOnRefreshTokenReuse(client, row.session_id);
+      await revokeRefreshTokensForSession(client, row.session_id);
 
       await client.query('COMMIT');
       transactionOpen = false;
 
       throw new AppError(
         401,
-        'REFRESH_TOKEN_REUSE_DETECTED',
+        ERROR_CODES.REFRESH_TOKEN_REUSE_DETECTED,
         'Se detectó la reutilización de un token de renovación',
       );
     }
@@ -325,99 +237,61 @@ export async function refreshSession(
     ) {
       throw new AppError(
         401,
-        'INVALID_REFRESH_TOKEN',
+        ERROR_CODES.INVALID_REFRESH_TOKEN,
         'La sesión no es válida o ha expirado',
       );
     }
 
     if (!row.is_active) {
-      await client.query(
-        `
-          UPDATE auth_sessions
-          SET
-            revoked_at = COALESCE(revoked_at, NOW()),
-            revoked_reason = 'user_inactive'
-          WHERE id = $1
-        `,
-        [row.session_id],
-      );
-
-      await client.query(
-        `
-          UPDATE auth_refresh_tokens
-          SET revoked_at = COALESCE(revoked_at, NOW())
-          WHERE session_id = $1
-        `,
-        [row.session_id],
-      );
+      await revokeSessionForInactiveUser(client, row.session_id);
+      await revokeRefreshTokensForSession(client, row.session_id);
 
       await client.query('COMMIT');
       transactionOpen = false;
 
-      throw new AppError(401, 'USER_INACTIVE', 'El usuario no está activo');
+      throw new AppError(
+        401,
+        ERROR_CODES.USER_INACTIVE,
+        'El usuario no está activo',
+      );
     }
 
     const nextRefreshToken = createRefreshToken();
     const nextExpiresAt = new Date(Date.now() + REFRESH_TTL_MS);
 
     // Mark the old token as consumed before inserting the new one.
-    const consumedResult = await client.query(
-      `
-        UPDATE auth_refresh_tokens
-        SET used_at = NOW()
-        WHERE id = $1
-          AND used_at IS NULL
-          AND revoked_at IS NULL
-      `,
-      [row.refresh_token_id],
+    const consumedRowCount = await consumeRefreshToken(
+      client,
+      row.refresh_token_id,
     );
 
-    if (consumedResult.rowCount !== 1) {
+    if (consumedRowCount !== 1) {
       throw new AppError(
         401,
-        'INVALID_REFRESH_TOKEN',
+        ERROR_CODES.INVALID_REFRESH_TOKEN,
         'El token de renovación ya no está disponible',
       );
     }
 
-    const nextTokenResult = await client.query<CreatedIdRow>(
-      `
-        INSERT INTO auth_refresh_tokens (
-          session_id,
-          token_hash,
-          expires_at
-        )
-        VALUES ($1, $2, $3)
-        RETURNING id
-      `,
-      [row.session_id, hashRefreshToken(nextRefreshToken), nextExpiresAt],
+    const nextToken = await insertReplacementRefreshToken(
+      client,
+      row.session_id,
+      hashRefreshToken(nextRefreshToken),
+      nextExpiresAt,
     );
 
-    const nextTokenId = nextTokenResult.rows[0]?.id;
+    const nextTokenId = nextToken?.id;
 
     if (!nextTokenId) {
       throw new Error('Could not create replacement refresh token');
     }
 
-    await client.query(
-      `
-        UPDATE auth_refresh_tokens
-        SET replaced_by_token_id = $2
-        WHERE id = $1
-      `,
-      [row.refresh_token_id, nextTokenId],
+    await linkReplacementRefreshToken(
+      client,
+      row.refresh_token_id,
+      nextTokenId,
     );
-
-    await client.query(
-      `
-        UPDATE auth_sessions
-        SET
-          last_used_at = NOW(),
-          expires_at = $2
-        WHERE id = $1
-      `,
-      [row.session_id, nextExpiresAt],
-    );
+    await updateSessionLastUsed(client, row.session_id, nextExpiresAt);
 
     const user = {
       id: row.user_id,
@@ -472,29 +346,8 @@ export async function revokeSession(
   try {
     await client.query('BEGIN');
 
-    await client.query(
-      `
-        UPDATE auth_sessions
-        SET
-          revoked_at = COALESCE(revoked_at, NOW()),
-          revoked_reason = 'logout'
-        WHERE id = $1
-          AND user_id = $2
-      `,
-      [sessionId, userId],
-    );
-
-    await client.query(
-      `
-        UPDATE auth_refresh_tokens rt
-        SET revoked_at = COALESCE(rt.revoked_at, NOW())
-        FROM auth_sessions s
-        WHERE rt.session_id = s.id
-          AND s.id = $1
-          AND s.user_id = $2
-      `,
-      [sessionId, userId],
-    );
+    await revokeSessionOnLogout(client, sessionId, userId);
+    await revokeRefreshTokensOnLogout(client, sessionId, userId);
 
     await client.query('COMMIT');
   } catch (error) {

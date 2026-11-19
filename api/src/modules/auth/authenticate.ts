@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import { db } from '../../db.js';
+import { db } from '../../db/pool.js';
+import { ERROR_CODES } from '../../errors/error-codes.js';
 
 import type { AuthenticatedSessionRow } from './auth.types.js';
 
@@ -12,7 +13,7 @@ export async function authenticateRequest(
     await request.jwtVerify();
   } catch {
     reply.code(401).send({
-      error: 'UNAUTHORIZED',
+      error: ERROR_CODES.UNAUTHORIZED,
       message: 'Token de acceso inválido o expirado',
     });
     return;
@@ -27,7 +28,7 @@ export async function authenticateRequest(
     !payload.hid
   ) {
     reply.code(401).send({
-      error: 'INVALID_TOKEN',
+      error: ERROR_CODES.INVALID_TOKEN,
       message: 'El token no tiene los permisos necesarios',
     });
     return;
@@ -69,7 +70,7 @@ export async function authenticateRequest(
 
   if (!session) {
     reply.code(401).send({
-      error: 'SESSION_EXPIRED',
+      error: ERROR_CODES.SESSION_EXPIRED,
       message: 'La sesión no existe, expiró o fue revocada',
     });
     return;

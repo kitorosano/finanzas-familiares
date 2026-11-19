@@ -6,10 +6,8 @@ import type { PoolClient } from 'pg';
 
 import { env } from '../../config/env.js';
 import { AppError } from '../../errors/app-error.js';
-import {
-  ARGON2_OPTIONS,
-  REFRESH_COOKIE_NAME,
-} from './auth.constants.js';
+import { ERROR_CODES } from '../../errors/error-codes.js';
+import { ARGON2_OPTIONS, REFRESH_COOKIE_NAME } from './auth.constants.js';
 
 import type { AuthHousehold, AuthResponse, AuthUser } from './auth.types.js';
 
@@ -74,7 +72,7 @@ export function clearRefreshCookie(reply: FastifyReply): void {
 export function invalidCredentialsError(): AppError {
   return new AppError(
     401,
-    'INVALID_CREDENTIALS',
+    ERROR_CODES.INVALID_CREDENTIALS,
     'Email o contraseña incorrectos',
   );
 }

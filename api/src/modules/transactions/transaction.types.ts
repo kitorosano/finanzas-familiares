@@ -1,6 +1,26 @@
-export type TransactionType = 'income' | 'expense' | 'transfer';
+import type { CurrencyCode } from '../../types/money.js';
+import type {
+  TRANSACTION_STATUSES,
+  TRANSACTION_TYPES,
+} from './transaction.constants.js';
 
-export type TransactionStatus = 'pending' | 'posted';
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
+
+export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+
+export interface CategoryRow {
+  id: string;
+  category_type: Exclude<TransactionType, 'transfer'>;
+}
+
+export interface CreatedPurchaseRow {
+  purchase_id: string;
+}
+
+export interface CreateTransactionResult {
+  transaction: TransactionRow;
+  creditCardPurchaseId: string | null;
+}
 
 export interface CreateTransactionBase {
   accountId: string;
@@ -13,7 +33,7 @@ export interface CreateTransactionBase {
 }
 
 export interface CreateIncomeExpenseBody extends CreateTransactionBase {
-  transactionType: 'income' | 'expense';
+  transactionType: Exclude<TransactionType, 'transfer'>;
   categoryId: string;
   installmentsCount?: number;
 }
@@ -36,14 +56,14 @@ export interface TransactionRow {
   occurred_at: Date;
   description: string | null;
   amount: string;
-  currency_code: string;
+  currency_code: CurrencyCode;
   exchange_rate_to_base: string;
   amount_base: string;
   account_id: string;
   category_id: string | null;
   transfer_account_id: string | null;
   transfer_amount: string | null;
-  transfer_currency_code: string | null;
+  transfer_currency_code: CurrencyCode | null;
   transfer_exchange_rate_to_base: string | null;
   transfer_amount_base: string | null;
   notes: string | null;

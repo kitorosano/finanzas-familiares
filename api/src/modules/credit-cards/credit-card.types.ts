@@ -1,4 +1,9 @@
 import type { TransactionRow } from '../transactions/transaction.types.js';
+import type {
+  BalanceConversionStatus,
+  CurrencyCode,
+} from '../../types/money.js';
+import type { CREDIT_CARD_STATEMENT_STATUSES } from './credit-card.constants.js';
 
 export interface PayCreditCardParams {
   cardAccountId: string;
@@ -37,12 +42,28 @@ export interface CreditCardPaymentResult {
   cardPosition: CreditCardPosition;
 }
 
-export type CreditCardStatementStatus = 'pending' | 'partially_paid' | 'paid';
+export interface CreatedTransactionIdRow {
+  transaction_id: string;
+}
 
-export type CreditCardCurrencyCode = 'UYU' | 'USD' | 'ARS' | 'BRL';
+export interface AllocationSummaryRow {
+  allocated_amount: string;
+  unapplied_advance: string;
+}
+
+export interface CreditCardPositionRow {
+  signed_balance: string;
+  debt_balance: string;
+  credit_balance: string;
+  outstanding_statement_balance: string;
+  unapplied_advances: string;
+}
+
+export type CreditCardStatementStatus =
+  (typeof CREDIT_CARD_STATEMENT_STATUSES)[number];
 
 export interface ListCreditCardsQuery {
-  currencyCode?: CreditCardCurrencyCode;
+  currencyCode?: CurrencyCode;
   includeInactive?: boolean;
 }
 
@@ -50,7 +71,7 @@ export interface CreditCardRow {
   id: string;
   name: string;
   institution: string | null;
-  currencyCode: CreditCardCurrencyCode;
+  currencyCode: CurrencyCode;
 
   holderUserId: string | null;
   holderName: string | null;
@@ -64,14 +85,10 @@ export interface CreditCardRow {
   paymentDueMonthOffset: number | null;
 
   balance: string;
-  baseCurrencyCode: CreditCardCurrencyCode;
+  baseCurrencyCode: CurrencyCode;
   exchangeRateToBase: string | null;
   balanceBase: string | null;
-  conversionStatus:
-    | 'base_currency'
-    | 'zero_balance'
-    | 'converted'
-    | 'missing_rate';
+  conversionStatus: BalanceConversionStatus;
 
   signedBalance: string;
   debtBalance: string;

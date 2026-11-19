@@ -1,7 +1,7 @@
 import { confirm, password, select } from '@inquirer/prompts';
 import argon2 from 'argon2';
 
-import { db } from '../db.js';
+import { db } from '../db/pool.js';
 import { ARGON2_OPTIONS } from '../modules/auth/auth.constants.js';
 
 interface PendingUser {

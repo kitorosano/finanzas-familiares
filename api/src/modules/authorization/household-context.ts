@@ -1,19 +1,16 @@
 import type { FastifyRequest } from 'fastify';
 
 import { AppError } from '../../errors/app-error.js';
+import { ERROR_CODES } from '../../errors/error-codes.js';
 
 import type { AuthContext } from '../auth/auth.types.js';
-
-export interface HouseholdScope {
-  householdId: string;
-  userId: string;
-}
+import type { HouseholdScope } from './authorization.types.js';
 
 export function requireAuthContext(request: FastifyRequest): AuthContext {
   if (!request.auth) {
     throw new AppError(
       401,
-      'UNAUTHORIZED',
+      ERROR_CODES.UNAUTHORIZED,
       'Se requiere una sesión autenticada',
     );
   }
