@@ -5,7 +5,10 @@ import { AppError } from '../../errors/app-error.js';
 
 import { setAuditActor } from '../audit/audit-context.js';
 import { writeAuditLog } from '../audit/audit.service.js';
-import { getHouseholdScope } from '../authorization/household-context.js';
+import {
+  getHouseholdScope,
+  type HouseholdScope,
+} from '../authorization/household-context.js';
 
 import type { TransactionRow } from '../transactions/transaction.types.js';
 
@@ -13,9 +16,19 @@ import type {
   CreditCardPaymentAllocation,
   CreditCardPaymentResult,
   CreditCardPosition,
+  CreditCardRow,
+  CreditCardStatementDetailResult,
+  CreditCardStatementInstallment,
+  CreditCardStatementPayment,
+  CreditCardStatementRow,
+  CreditCardStatementsResult,
+  ListCreditCardsQuery,
+  ListCreditCardStatementsQuery,
   PayCreditCardBody,
   PayCreditCardParams,
 } from './credit-card.types.js';
+
+import { db } from '../../db.js';
 
 interface AccountRow {
   id: string;
@@ -402,4 +415,348 @@ export async function payCreditCard(
       cardPosition,
     };
   });
+}
+
+export async function listCreditCards(
+  scope: HouseholdScope,
+  filters: ListCreditCardsQuery,
+): Promise<CreditCardRow[]> {
+  const result = await db.query<CreditCardRow>(
+    `
+      SELECT
+        a.id::text AS id,
+        a.name,
+        a.institution,
+        a.currency_code AS "currencyCode",
+
+        a.holder_user_id::text AS "holderUserId",
+        u.display_name AS "holderName",
+
+        a.is_active AS "isActive",
+        a.include_in_net_worth AS "includeInNetWorth",
+        a.credit_limit::text AS "creditLimit",
+
+        a.statement_closing_day AS "statementClosingDay",
+        a.payment_due_day AS "paymentDueDay",
+        a.payment_due_month_offset AS "paymentDueMonthOffset",
+
+        ab.balance::text AS balance,
+        ab.base_currency_code AS "baseCurrencyCode",
+        ab.exchange_rate_to_base::text AS "exchangeRateToBase",
+        ab.balance_base::text AS "balanceBase",
+        ab.conversion_status AS "conversionStatus",
+
+        cp.signed_balance::text AS "signedBalance",
+        cp.debt_balance::text AS "debtBalance",
+        cp.credit_balance::text AS "creditBalance",
+        cp.outstanding_statement_balance::text
+          AS "outstandingStatementBalance",
+        cp.unapplied_advances::text AS "unappliedAdvances"
+
+      FROM accounts a
+
+      JOIN account_balances ab
+        ON ab.account_id = a.id
+       AND ab.household_id = a.household_id
+
+      JOIN credit_card_account_positions cp
+        ON cp.account_id = a.id
+       AND cp.household_id = a.household_id
+
+      LEFT JOIN users u
+        ON u.id = a.holder_user_id
+
+      WHERE a.household_id = $1
+        AND a.account_type = 'credit_card'
+        AND ($2::char(3) IS NULL OR a.currency_code = $2)
+        AND ($3::boolean OR a.is_active = TRUE)
+
+      ORDER BY a.currency_code, a.name, a.id
+    `,
+    [
+      scope.householdId,
+      filters.currencyCode ?? null,
+      filters.includeInactive ?? false,
+    ],
+  );
+
+  return result.rows;
+}
+
+export async function getCreditCardById(
+  scope: HouseholdScope,
+  cardAccountId: string,
+): Promise<CreditCardRow> {
+  const result = await listCreditCards(scope, {
+    includeInactive: true,
+  });
+
+  const card = result.find((item) => item.id === cardAccountId);
+
+  if (!card) {
+    throw new AppError(
+      404,
+      'CREDIT_CARD_NOT_FOUND',
+      'No se encontró la tarjeta de crédito en el hogar',
+    );
+  }
+
+  return card;
+}
+
+export async function listCreditCardStatements(
+  scope: HouseholdScope,
+  cardAccountId: string,
+  filters: ListCreditCardStatementsQuery,
+): Promise<CreditCardStatementsResult> {
+  await getCreditCardById(scope, cardAccountId);
+
+  if (filters.dueFrom && filters.dueTo && filters.dueFrom > filters.dueTo) {
+    throw new AppError(
+      400,
+      'INVALID_DUE_DATE_RANGE',
+      'La fecha inicial no puede ser posterior a la fecha final',
+    );
+  }
+
+  const limit = filters.limit ?? 50;
+  const offset = filters.offset ?? 0;
+
+  const filterValues = [
+    scope.householdId,
+    cardAccountId,
+    filters.status ?? null,
+    filters.dueFrom ?? null,
+    filters.dueTo ?? null,
+  ];
+
+  const countResult = await db.query<{ total: number }>(
+    `
+      SELECT COUNT(*)::integer AS total
+      FROM credit_card_statement_balances b
+
+      WHERE b.household_id = $1
+        AND b.account_id = $2
+        AND ($3::varchar IS NULL OR b.payment_status = $3)
+        AND ($4::date IS NULL OR b.due_date >= $4::date)
+        AND ($5::date IS NULL OR b.due_date <= $5::date)
+    `,
+    filterValues,
+  );
+
+  const statementsResult = await db.query<CreditCardStatementRow>(
+    `
+      SELECT
+        s.id::text AS id,
+        s.account_id::text AS "accountId",
+        s.period_start::text AS "periodStart",
+        s.period_end::text AS "periodEnd",
+        s.closing_date::text AS "closingDate",
+        s.due_date::text AS "dueDate",
+
+        b.total_due::text AS "totalDue",
+        b.amount_paid::text AS "amountPaid",
+        b.outstanding_amount::text AS "outstandingAmount",
+        b.payment_status AS "paymentStatus",
+
+        COALESCE(i.installment_count, 0)::integer
+          AS "installmentCount",
+
+        COALESCE(p.payment_count, 0)::integer
+          AS "paymentCount",
+
+        s.notes,
+        s.created_at AS "createdAt"
+
+      FROM credit_card_statements s
+
+      JOIN credit_card_statement_balances b
+        ON b.statement_id = s.id
+       AND b.household_id = s.household_id
+
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS installment_count
+        FROM credit_card_installments ci
+        WHERE ci.statement_id = s.id
+          AND ci.household_id = s.household_id
+      ) i ON TRUE
+
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS payment_count
+        FROM credit_card_statement_payments cp
+        WHERE cp.statement_id = s.id
+          AND cp.household_id = s.household_id
+      ) p ON TRUE
+
+      WHERE s.household_id = $1
+        AND s.account_id = $2
+        AND ($3::varchar IS NULL OR b.payment_status = $3)
+        AND ($4::date IS NULL OR s.due_date >= $4::date)
+        AND ($5::date IS NULL OR s.due_date <= $5::date)
+
+      ORDER BY s.due_date, s.closing_date, s.id
+
+      LIMIT $6
+      OFFSET $7
+    `,
+    [...filterValues, limit, offset],
+  );
+
+  return {
+    data: statementsResult.rows,
+    pagination: {
+      limit,
+      offset,
+      total: countResult.rows[0]?.total ?? 0,
+    },
+  };
+}
+
+export async function getCreditCardStatementDetail(
+  scope: HouseholdScope,
+  cardAccountId: string,
+  statementId: string,
+): Promise<CreditCardStatementDetailResult> {
+  await getCreditCardById(scope, cardAccountId);
+
+  const statementResult = await db.query<CreditCardStatementRow>(
+    `
+      SELECT
+        s.id::text AS id,
+        s.account_id::text AS "accountId",
+        s.period_start::text AS "periodStart",
+        s.period_end::text AS "periodEnd",
+        s.closing_date::text AS "closingDate",
+        s.due_date::text AS "dueDate",
+
+        b.total_due::text AS "totalDue",
+        b.amount_paid::text AS "amountPaid",
+        b.outstanding_amount::text AS "outstandingAmount",
+        b.payment_status AS "paymentStatus",
+
+        (
+          SELECT COUNT(*)::integer
+          FROM credit_card_installments i
+          WHERE i.statement_id = s.id
+            AND i.household_id = s.household_id
+        ) AS "installmentCount",
+
+        (
+          SELECT COUNT(*)::integer
+          FROM credit_card_statement_payments p
+          WHERE p.statement_id = s.id
+            AND p.household_id = s.household_id
+        ) AS "paymentCount",
+
+        s.notes,
+        s.created_at AS "createdAt"
+
+      FROM credit_card_statements s
+
+      JOIN credit_card_statement_balances b
+        ON b.statement_id = s.id
+       AND b.household_id = s.household_id
+
+      WHERE s.id = $1
+        AND s.account_id = $2
+        AND s.household_id = $3
+
+      LIMIT 1
+    `,
+    [statementId, cardAccountId, scope.householdId],
+  );
+
+  const statement = statementResult.rows[0];
+
+  if (!statement) {
+    throw new AppError(
+      404,
+      'CREDIT_CARD_STATEMENT_NOT_FOUND',
+      'No se encontró el estado de cuenta de esta tarjeta',
+    );
+  }
+
+  const installmentsResult = await db.query<CreditCardStatementInstallment>(
+    `
+        SELECT
+          i.id::text AS id,
+          i.purchase_id::text AS "purchaseId",
+          i.installment_number AS "installmentNumber",
+          i.due_date::text AS "dueDate",
+          i.amount::text AS amount,
+
+          p.installments_count AS "purchaseInstallmentsCount",
+          p.first_due_date::text AS "purchaseFirstDueDate",
+
+          t.id::text AS "transactionId",
+          t.description AS "purchaseDescription",
+          t.occurred_at AS "purchaseOccurredAt",
+          t.amount::text AS "purchaseAmount",
+
+          c.name AS "categoryName"
+
+        FROM credit_card_installments i
+
+        JOIN credit_card_purchases p
+          ON p.id = i.purchase_id
+         AND p.household_id = i.household_id
+
+        JOIN transactions t
+          ON t.id = p.transaction_id
+         AND t.household_id = p.household_id
+
+        LEFT JOIN categories c
+          ON c.id = t.category_id
+
+        WHERE i.statement_id = $1
+          AND i.household_id = $2
+
+        ORDER BY
+          i.due_date,
+          t.occurred_at,
+          i.purchase_id,
+          i.installment_number
+      `,
+    [statementId, scope.householdId],
+  );
+
+  const paymentsResult = await db.query<CreditCardStatementPayment>(
+    `
+        SELECT
+          p.id::text AS id,
+          p.transaction_id::text AS "transactionId",
+          p.amount::text AS amount,
+          p.notes,
+          p.created_at AS "createdAt",
+
+          t.description AS "paymentDescription",
+          t.occurred_at AS "paymentOccurredAt",
+          t.transfer_amount::text AS "transferAmount",
+
+          t.account_id::text AS "sourceAccountId",
+          source.name AS "sourceAccountName"
+
+        FROM credit_card_statement_payments p
+
+        JOIN transactions t
+          ON t.id = p.transaction_id
+         AND t.household_id = p.household_id
+
+        JOIN accounts source
+          ON source.id = t.account_id
+         AND source.household_id = t.household_id
+
+        WHERE p.statement_id = $1
+          AND p.household_id = $2
+
+        ORDER BY p.created_at, p.id
+      `,
+    [statementId, scope.householdId],
+  );
+
+  return {
+    statement,
+    installments: installmentsResult.rows,
+    payments: paymentsResult.rows,
+  };
 }
