@@ -7,8 +7,11 @@ import rateLimit from '@fastify/rate-limit';
 import { env } from './config/env.js';
 import { db } from './db.js';
 import { registerApiErrorHandler } from './errors/error-handler.js';
-import { authenticateRequest } from './modules/auth/authenticate.js';
+import { auditRoutes } from './modules/audit/audit.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { authenticateRequest } from './modules/auth/authenticate.js';
+import { creditCardRoutes } from './modules/credit-cards/credit-card.routes.js';
+import { transactionRoutes } from './modules/transactions/transaction.routes.js';
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -53,6 +56,18 @@ export function buildApp(): FastifyInstance {
 
   app.register(authRoutes, {
     prefix: '/auth',
+  });
+
+  app.register(auditRoutes, {
+    prefix: '/audit',
+  });
+
+  app.register(transactionRoutes, {
+    prefix: '/transactions',
+  });
+
+  app.register(creditCardRoutes, {
+    prefix: '/credit-cards',
   });
 
   app.get('/health', async () => ({
