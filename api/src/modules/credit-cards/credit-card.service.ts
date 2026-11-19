@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import { withTransaction } from '../../db/transaction.js';
 import { AppError } from '../../errors/app-error.js';
 
+import { setAuditActor } from '../audit/audit-context.js';
 import { writeAuditLog } from '../audit/audit.service.js';
 import { getHouseholdScope } from '../authorization/household-context.js';
 
@@ -90,6 +91,8 @@ export async function payCreditCard(
   const body = request.body;
 
   return withTransaction(async (client) => {
+    await setAuditActor(client, scope.userId);
+
     // 1. Validate amount before touching financial records.
     if (!Number.isFinite(body.amount) || body.amount <= 0) {
       throw new AppError(

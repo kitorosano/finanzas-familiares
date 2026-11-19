@@ -3,6 +3,7 @@ import { AppError } from '../../errors/app-error.js';
 
 import { writeAuditLog } from '../audit/audit.service.js';
 import { getHouseholdScope } from '../authorization/household-context.js';
+import { setAuditActor } from '../audit/audit-context.js';
 
 import type {
   CreateTransactionBody,
@@ -76,6 +77,8 @@ export async function createTransaction(
   const scope = getHouseholdScope(request);
 
   return withTransaction(async (client) => {
+    await setAuditActor(client, scope.userId);
+    
     const householdResult = await client.query<HouseholdRow>(
       `
         SELECT base_currency_code
