@@ -1,16 +1,125 @@
 import type { PoolClient } from 'pg';
 
+import { db } from '../../db/pool.js';
+
 import type { HouseholdBaseCurrencyRow } from '../../types/household.js';
 import type { CurrencyCode } from '../../types/money.js';
 import type { AccountValidationRow } from '../accounts/account.types.js';
 
 import type {
   CreatedPurchaseRow,
-  CreateTransactionBody,
+  ListTransactionsQuery,
+  TransactionQueryRow,
   TransactionRow,
+  TransactionsListResult,
   TransactionStatus,
   TransactionType,
 } from './transaction.types.js';
+
+const TRANSACTION_SELECT = `
+  SELECT
+    t.id::text AS id,
+    t.transaction_type AS "transactionType",
+    t.status,
+
+    t.occurred_at AS "occurredAt",
+    t.description,
+
+    t.amount::text AS amount,
+    t.currency_code AS "currencyCode",
+    t.exchange_rate_to_base::text AS "exchangeRateToBase",
+    t.amount_base::text AS "amountBase",
+
+    t.account_id::text AS "accountId",
+    a.name AS "accountName",
+    a.account_type AS "accountType",
+
+    t.category_id::text AS "categoryId",
+    c.name AS "categoryName",
+    c.category_type AS "categoryType",
+
+    t.transfer_account_id::text AS "transferAccountId",
+    ta.name AS "transferAccountName",
+    t.transfer_amount::text AS "transferAmount",
+    t.transfer_currency_code AS "transferCurrencyCode",
+    t.transfer_exchange_rate_to_base::text AS "transferExchangeRateToBase",
+    t.transfer_amount_base::text AS "transferAmountBase",
+
+    ccp.id::text AS "creditCardPurchaseId",
+    ccp.installments_count AS "installmentsCount",
+    ccp.first_due_date::text AS "firstDueDate",
+
+    t.notes,
+
+    t.created_by::text AS "createdBy",
+    t.updated_by::text AS "updatedBy",
+
+    t.created_at AS "createdAt",
+    t.updated_at AS "updatedAt"
+
+  FROM transactions t
+
+  JOIN households h
+    ON h.id = t.household_id
+
+  JOIN accounts a
+    ON a.id = t.account_id
+   AND a.household_id = t.household_id
+
+  LEFT JOIN categories c
+    ON c.id = t.category_id
+   AND (
+     c.household_id = t.household_id
+     OR c.household_id IS NULL
+   )
+
+  LEFT JOIN accounts ta
+    ON ta.id = t.transfer_account_id
+   AND ta.household_id = t.household_id
+
+  LEFT JOIN credit_card_purchases ccp
+    ON ccp.transaction_id = t.id
+   AND ccp.household_id = t.household_id
+
+  WHERE t.household_id = $1
+`;
+
+const TRANSACTION_FILTERS = `
+  AND (
+    $2::uuid IS NULL
+    OR t.account_id = $2
+    OR t.transfer_account_id = $2
+  )
+
+  AND (
+    $3::uuid IS NULL
+    OR t.category_id = $3
+  )
+
+  AND (
+    $4::varchar IS NULL
+    OR t.transaction_type = $4
+  )
+
+  AND (
+    $5::varchar IS NULL
+    OR t.status = $5
+  )
+
+  AND (
+    $6::date IS NULL
+    OR t.occurred_at >= (
+      $6::date::timestamp AT TIME ZONE h.time_zone
+    )
+  )
+
+  AND (
+    $7::date IS NULL
+    OR t.occurred_at < (
+      ($7::date + 1)::timestamp AT TIME ZONE h.time_zone
+    )
+  )
+`;
 
 const TRANSACTION_QUERIES = {
   getHouseholdBaseCurrency: `
@@ -19,6 +128,7 @@ const TRANSACTION_QUERIES = {
     WHERE id = $1
     FOR SHARE
   `,
+
   lockAccounts: `
     SELECT
       id::text AS id,
@@ -31,6 +141,7 @@ const TRANSACTION_QUERIES = {
     ORDER BY id
     FOR UPDATE
   `,
+
   insert: `
     INSERT INTO transactions (
       household_id,
@@ -104,12 +215,44 @@ const TRANSACTION_QUERIES = {
       created_by::text AS created_by,
       created_at
   `,
+
   createCreditCardPurchase: `
     SELECT public.create_credit_card_purchase_auto(
       $1::uuid,
       $2::smallint,
       $3::uuid
     ) AS purchase_id
+  `,
+
+  list: `
+    ${TRANSACTION_SELECT}
+    ${TRANSACTION_FILTERS}
+
+    ORDER BY
+      t.occurred_at DESC,
+      t.id DESC
+
+    LIMIT $8
+    OFFSET $9
+  `,
+
+  count: `
+    SELECT COUNT(*)::integer AS total
+
+    FROM transactions t
+
+    JOIN households h
+      ON h.id = t.household_id
+
+    WHERE t.household_id = $1
+    ${TRANSACTION_FILTERS}
+  `,
+
+  getById: `
+    ${TRANSACTION_SELECT}
+      AND t.id = $2
+
+    LIMIT 1
   `,
 } as const;
 
@@ -161,24 +304,27 @@ export async function insertTransaction(
   client: PoolClient,
   values: InsertTransactionParams,
 ): Promise<TransactionRow | undefined> {
-  const result = await client.query<TransactionRow>(TRANSACTION_QUERIES.insert, [
-    values.householdId,
-    values.transactionType,
-    values.status,
-    values.occurredAt,
-    values.description,
-    values.amount,
-    values.currencyCode,
-    values.exchangeRateToBase,
-    values.accountId,
-    values.categoryId,
-    values.transferAccountId,
-    values.transferAmount,
-    values.transferCurrencyCode,
-    values.transferExchangeRateToBase,
-    values.notes,
-    values.userId,
-  ]);
+  const result = await client.query<TransactionRow>(
+    TRANSACTION_QUERIES.insert,
+    [
+      values.householdId,
+      values.transactionType,
+      values.status,
+      values.occurredAt,
+      values.description,
+      values.amount,
+      values.currencyCode,
+      values.exchangeRateToBase,
+      values.accountId,
+      values.categoryId,
+      values.transferAccountId,
+      values.transferAmount,
+      values.transferCurrencyCode,
+      values.transferExchangeRateToBase,
+      values.notes,
+      values.userId,
+    ],
+  );
 
   return result.rows[0];
 }
@@ -195,4 +341,53 @@ export async function createCreditCardPurchase(
   );
 
   return result.rows[0]?.purchase_id;
+}
+
+export async function listTransactions(
+  householdId: string,
+  filters: ListTransactionsQuery,
+): Promise<TransactionsListResult> {
+  const queryValues = [
+    householdId,
+    filters.accountId ?? null,
+    filters.categoryId ?? null,
+    filters.transactionType ?? null,
+    filters.status ?? null,
+    filters.occurredFrom ?? null,
+    filters.occurredTo ?? null,
+  ];
+
+  const limit = filters.limit ?? 50;
+  const offset = filters.offset ?? 0;
+
+  const [countResult, transactionsResult] = await Promise.all([
+    db.query<{ total: number }>(TRANSACTION_QUERIES.count, queryValues),
+
+    db.query<TransactionQueryRow>(TRANSACTION_QUERIES.list, [
+      ...queryValues,
+      limit,
+      offset,
+    ]),
+  ]);
+
+  return {
+    data: transactionsResult.rows,
+    pagination: {
+      limit,
+      offset,
+      total: countResult.rows[0]?.total ?? 0,
+    },
+  };
+}
+
+export async function getTransactionById(
+  householdId: string,
+  transactionId: string,
+): Promise<TransactionQueryRow | undefined> {
+  const result = await db.query<TransactionQueryRow>(
+    TRANSACTION_QUERIES.getById,
+    [householdId, transactionId],
+  );
+
+  return result.rows[0];
 }

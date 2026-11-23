@@ -2,8 +2,20 @@ import type { FastifySchema } from 'fastify';
 
 import { CURRENCY_CODES } from '../../constants/money.js';
 import { UUID_PATTERN } from '../../constants/patterns.js';
+import { SCHEMA_ADDITIONAL_PROPERTIES } from '../../constants/schema.js';
 
-import { CREDIT_CARD_STATEMENT_STATUSES } from './credit-card.constants.js';
+import {
+  CREDIT_CARD_AMOUNT_EXCLUSIVE_MINIMUM,
+  CREDIT_CARD_INCLUDE_INACTIVE_DEFAULT,
+  CREDIT_CARD_PAYMENT_NOTES_MAX_LENGTH,
+  CREDIT_CARD_STATEMENTS_LIMIT_DEFAULT,
+  CREDIT_CARD_STATEMENTS_LIMIT_MAX,
+  CREDIT_CARD_STATEMENTS_LIMIT_MIN,
+  CREDIT_CARD_STATEMENTS_OFFSET_DEFAULT,
+  CREDIT_CARD_STATEMENTS_OFFSET_MAX,
+  CREDIT_CARD_STATEMENTS_OFFSET_MIN,
+  CREDIT_CARD_STATEMENT_STATUSES,
+} from './credit-card.constants.js';
 
 const uuidSchema = {
   type: 'string',
@@ -12,7 +24,7 @@ const uuidSchema = {
 
 const creditCardParamsSchema = {
   type: 'object',
-  additionalProperties: false,
+  additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
   required: ['cardAccountId'],
   properties: {
     cardAccountId: uuidSchema,
@@ -22,7 +34,7 @@ const creditCardParamsSchema = {
 export const CREDIT_CARD_LIST_SCHEMA = {
   querystring: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     properties: {
       currencyCode: {
         type: 'string',
@@ -30,7 +42,7 @@ export const CREDIT_CARD_LIST_SCHEMA = {
       },
       includeInactive: {
         type: 'boolean',
-        default: false,
+        default: CREDIT_CARD_INCLUDE_INACTIVE_DEFAULT,
       },
     },
   },
@@ -40,7 +52,7 @@ export const CREDIT_CARD_STATEMENTS_SCHEMA = {
   params: creditCardParamsSchema,
   querystring: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     properties: {
       status: {
         type: 'string',
@@ -56,15 +68,15 @@ export const CREDIT_CARD_STATEMENTS_SCHEMA = {
       },
       limit: {
         type: 'integer',
-        minimum: 1,
-        maximum: 100,
-        default: 50,
+        minimum: CREDIT_CARD_STATEMENTS_LIMIT_MIN,
+        maximum: CREDIT_CARD_STATEMENTS_LIMIT_MAX,
+        default: CREDIT_CARD_STATEMENTS_LIMIT_DEFAULT,
       },
       offset: {
         type: 'integer',
-        minimum: 0,
-        maximum: 100000,
-        default: 0,
+        minimum: CREDIT_CARD_STATEMENTS_OFFSET_MIN,
+        maximum: CREDIT_CARD_STATEMENTS_OFFSET_MAX,
+        default: CREDIT_CARD_STATEMENTS_OFFSET_DEFAULT,
       },
     },
   },
@@ -73,7 +85,7 @@ export const CREDIT_CARD_STATEMENTS_SCHEMA = {
 export const CREDIT_CARD_STATEMENT_DETAIL_SCHEMA = {
   params: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     required: ['cardAccountId', 'statementId'],
     properties: {
       cardAccountId: uuidSchema,
@@ -90,17 +102,17 @@ export const CREDIT_CARD_PAYMENT_SCHEMA = {
   params: creditCardParamsSchema,
   body: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     required: ['sourceAccountId', 'amount'],
     properties: {
       sourceAccountId: uuidSchema,
       amount: {
         type: 'number',
-        exclusiveMinimum: 0,
+        exclusiveMinimum: CREDIT_CARD_AMOUNT_EXCLUSIVE_MINIMUM,
       },
       exchangeRateToBase: {
         type: 'number',
-        exclusiveMinimum: 0,
+        exclusiveMinimum: CREDIT_CARD_AMOUNT_EXCLUSIVE_MINIMUM,
       },
       occurredAt: {
         type: 'string',
@@ -108,7 +120,7 @@ export const CREDIT_CARD_PAYMENT_SCHEMA = {
       },
       notes: {
         type: ['string', 'null'],
-        maxLength: 5000,
+        maxLength: CREDIT_CARD_PAYMENT_NOTES_MAX_LENGTH,
       },
     },
   },

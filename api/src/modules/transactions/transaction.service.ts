@@ -14,13 +14,18 @@ import type { FastifyRequest } from 'fastify';
 import {
   createCreditCardPurchase,
   getHouseholdBaseCurrency,
+  getTransactionById as getTransactionByIdFromDb,
   insertTransaction,
+  listTransactions as listTransactionsFromDb,
   lockAccounts,
 } from './transaction.db.js';
 import type {
   CreateTransactionBody,
   CreateTransactionResult,
+  ListTransactionsQuery,
+  TransactionQueryRow,
   TransactionStatus,
+  TransactionsListResult,
 } from './transaction.types.js';
 
 function resolveExchangeRate(
@@ -308,4 +313,47 @@ export async function createTransaction(
       creditCardPurchaseId,
     };
   });
+}
+
+export async function listTransactions(
+  request: FastifyRequest,
+  filters: ListTransactionsQuery,
+): Promise<TransactionsListResult> {
+  const scope = getHouseholdScope(request);
+
+  if (
+    filters.occurredFrom !== undefined &&
+    filters.occurredTo !== undefined &&
+    filters.occurredFrom > filters.occurredTo
+  ) {
+    throw new AppError(
+      400,
+      ERROR_CODES.INVALID_TRANSACTION_DATE_RANGE,
+      'La fecha inicial no puede ser posterior a la fecha final',
+    );
+  }
+
+  return listTransactionsFromDb(scope.householdId, filters);
+}
+
+export async function getTransactionById(
+  request: FastifyRequest,
+  transactionId: string,
+): Promise<TransactionQueryRow> {
+  const scope = getHouseholdScope(request);
+
+  const transaction = await getTransactionByIdFromDb(
+    scope.householdId,
+    transactionId,
+  );
+
+  if (!transaction) {
+    throw new AppError(
+      404,
+      ERROR_CODES.TRANSACTION_NOT_FOUND,
+      'No se encontró el movimiento en el hogar',
+    );
+  }
+
+  return transaction;
 }

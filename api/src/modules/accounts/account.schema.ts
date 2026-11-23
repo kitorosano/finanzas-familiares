@@ -2,8 +2,12 @@ import type { FastifySchema } from 'fastify';
 
 import { CURRENCY_CODES } from '../../constants/money.js';
 import { UUID_PATTERN } from '../../constants/patterns.js';
+import { SCHEMA_ADDITIONAL_PROPERTIES } from '../../constants/schema.js';
 
-import { ACCOUNT_TYPES } from './account.constants.js';
+import {
+  ACCOUNT_INCLUDE_INACTIVE_DEFAULT,
+  ACCOUNT_TYPES,
+} from './account.constants.js';
 
 const uuidSchema = {
   type: 'string',
@@ -13,7 +17,7 @@ const uuidSchema = {
 export const ACCOUNT_LIST_SCHEMA = {
   querystring: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     properties: {
       accountType: {
         type: 'string',
@@ -25,7 +29,7 @@ export const ACCOUNT_LIST_SCHEMA = {
       },
       includeInactive: {
         type: 'boolean',
-        default: false,
+        default: ACCOUNT_INCLUDE_INACTIVE_DEFAULT,
       },
     },
   },
@@ -34,7 +38,7 @@ export const ACCOUNT_LIST_SCHEMA = {
 export const ACCOUNT_DETAIL_SCHEMA = {
   params: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     required: ['accountId'],
     properties: {
       accountId: uuidSchema,

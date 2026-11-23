@@ -1,9 +1,21 @@
 import type { FastifySchema } from 'fastify';
 
 import { UUID_PATTERN } from '../../constants/patterns.js';
+import { SCHEMA_ADDITIONAL_PROPERTIES } from '../../constants/schema.js';
 import { CATEGORY_TYPES } from '../categories/category.constants.js';
 
 import {
+  TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
+  TRANSACTION_DESCRIPTION_MAX_LENGTH,
+  TRANSACTION_INSTALLMENTS_MAX,
+  TRANSACTION_INSTALLMENTS_MIN,
+  TRANSACTION_LIST_LIMIT_DEFAULT,
+  TRANSACTION_LIST_LIMIT_MAX,
+  TRANSACTION_LIST_LIMIT_MIN,
+  TRANSACTION_LIST_OFFSET_DEFAULT,
+  TRANSACTION_LIST_OFFSET_MIN,
+  TRANSACTION_NOTES_MAX_LENGTH,
+  TRANSACTION_QUERY_STATUSES,
   TRANSACTION_STATUSES,
   TRANSACTION_TYPES,
 } from './transaction.constants.js';
@@ -17,7 +29,7 @@ const transactionCommonProperties = {
   accountId: uuidSchema,
   amount: {
     type: 'number',
-    exclusiveMinimum: 0,
+    exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
   },
   occurredAt: {
     type: 'string',
@@ -25,11 +37,11 @@ const transactionCommonProperties = {
   },
   description: {
     type: ['string', 'null'],
-    maxLength: 1000,
+    maxLength: TRANSACTION_DESCRIPTION_MAX_LENGTH,
   },
   notes: {
     type: ['string', 'null'],
-    maxLength: 5000,
+    maxLength: TRANSACTION_NOTES_MAX_LENGTH,
   },
   status: {
     type: 'string',
@@ -37,7 +49,7 @@ const transactionCommonProperties = {
   },
   exchangeRateToBase: {
     type: 'number',
-    exclusiveMinimum: 0,
+    exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
   },
 };
 
@@ -46,7 +58,7 @@ export const TRANSACTION_CREATE_SCHEMA = {
     oneOf: [
       {
         type: 'object',
-        additionalProperties: false,
+        additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
         required: ['transactionType', 'accountId', 'amount', 'categoryId'],
         properties: {
           ...transactionCommonProperties,
@@ -57,14 +69,14 @@ export const TRANSACTION_CREATE_SCHEMA = {
           categoryId: uuidSchema,
           installmentsCount: {
             type: 'integer',
-            minimum: 1,
-            maximum: 240,
+            minimum: TRANSACTION_INSTALLMENTS_MIN,
+            maximum: TRANSACTION_INSTALLMENTS_MAX,
           },
         },
       },
       {
         type: 'object',
-        additionalProperties: false,
+        additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
         required: [
           'transactionType',
           'accountId',
@@ -81,14 +93,63 @@ export const TRANSACTION_CREATE_SCHEMA = {
           transferAccountId: uuidSchema,
           transferAmount: {
             type: 'number',
-            exclusiveMinimum: 0,
+            exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
           },
           transferExchangeRateToBase: {
             type: 'number',
-            exclusiveMinimum: 0,
+            exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
           },
         },
       },
     ],
+  },
+} satisfies FastifySchema;
+
+export const TRANSACTION_LIST_SCHEMA = {
+  querystring: {
+    type: 'object',
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
+    properties: {
+      accountId: uuidSchema,
+      categoryId: uuidSchema,
+      transactionType: {
+        type: 'string',
+        enum: [...TRANSACTION_TYPES],
+      },
+      status: {
+        type: 'string',
+        enum: [...TRANSACTION_QUERY_STATUSES],
+      },
+      occurredFrom: {
+        type: 'string',
+        format: 'date',
+      },
+      occurredTo: {
+        type: 'string',
+        format: 'date',
+      },
+      limit: {
+        type: 'integer',
+        minimum: TRANSACTION_LIST_LIMIT_MIN,
+        maximum: TRANSACTION_LIST_LIMIT_MAX,
+        default: TRANSACTION_LIST_LIMIT_DEFAULT,
+      },
+      offset: {
+        type: 'integer',
+        minimum: TRANSACTION_LIST_OFFSET_MIN,
+        default: TRANSACTION_LIST_OFFSET_DEFAULT,
+      },
+    },
+  },
+} satisfies FastifySchema;
+
+export const TRANSACTION_DETAIL_SCHEMA = {
+  params: {
+    type: 'object',
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
+    required: ['transactionId'],
+    properties: {
+      transactionId: uuidSchema,
+    },
   },
 } satisfies FastifySchema;

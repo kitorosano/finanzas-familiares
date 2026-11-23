@@ -4,24 +4,34 @@ import {
   AUDIT_CURSOR_PATTERN,
   AUDIT_ENTITY_NAME_PATTERN,
 } from '../../constants/patterns.js';
+import { SCHEMA_ADDITIONAL_PROPERTIES } from '../../constants/schema.js';
 
-import { AUDIT_ACTIONS } from './audit.constants.js';
+import {
+  AUDIT_ACTIONS,
+  AUDIT_CURSOR_MAX_LENGTH,
+  AUDIT_CURSOR_MIN_LENGTH,
+  AUDIT_ENTITY_NAME_MAX_LENGTH,
+  AUDIT_ENTITY_NAME_MIN_LENGTH,
+  AUDIT_LIST_LIMIT_DEFAULT,
+  AUDIT_LIST_LIMIT_MAX,
+  AUDIT_LIST_LIMIT_MIN,
+} from './audit.constants.js';
 
 export const AUDIT_LIST_SCHEMA = {
   querystring: {
     type: 'object',
-    additionalProperties: false,
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
     properties: {
       limit: {
         type: 'integer',
-        minimum: 1,
-        maximum: 100,
-        default: 50,
+        minimum: AUDIT_LIST_LIMIT_MIN,
+        maximum: AUDIT_LIST_LIMIT_MAX,
+        default: AUDIT_LIST_LIMIT_DEFAULT,
       },
       cursor: {
         type: 'string',
-        minLength: 1,
-        maxLength: 256,
+        minLength: AUDIT_CURSOR_MIN_LENGTH,
+        maxLength: AUDIT_CURSOR_MAX_LENGTH,
         pattern: AUDIT_CURSOR_PATTERN,
       },
       action: {
@@ -30,8 +40,8 @@ export const AUDIT_LIST_SCHEMA = {
       },
       entityName: {
         type: 'string',
-        minLength: 1,
-        maxLength: 100,
+        minLength: AUDIT_ENTITY_NAME_MIN_LENGTH,
+        maxLength: AUDIT_ENTITY_NAME_MAX_LENGTH,
         pattern: AUDIT_ENTITY_NAME_PATTERN,
       },
     },

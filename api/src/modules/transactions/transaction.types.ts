@@ -1,6 +1,9 @@
 import type { CurrencyCode } from '../../types/money.js';
+import type { AccountType } from '../accounts/account.types.js';
 import type { CategoryType } from '../categories/category.types.js';
+
 import type {
+  TRANSACTION_QUERY_STATUSES,
   TRANSACTION_STATUSES,
   TRANSACTION_TYPES,
 } from './transaction.constants.js';
@@ -8,6 +11,9 @@ import type {
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+
+export type TransactionQueryStatus =
+  (typeof TRANSACTION_QUERY_STATUSES)[number];
 
 export interface CreatedPurchaseRow {
   purchase_id: string;
@@ -44,6 +50,66 @@ export interface CreateTransferBody extends CreateTransactionBase {
 export type CreateTransactionBody =
   | CreateIncomeExpenseBody
   | CreateTransferBody;
+
+export interface ListTransactionsQuery {
+  accountId?: string;
+  categoryId?: string;
+  transactionType?: TransactionType;
+  status?: TransactionQueryStatus;
+  occurredFrom?: string;
+  occurredTo?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface TransactionQueryRow {
+  id: string;
+
+  transactionType: TransactionType;
+  status: TransactionQueryStatus;
+  occurredAt: Date;
+
+  description: string | null;
+  amount: string;
+  currencyCode: CurrencyCode;
+  exchangeRateToBase: string;
+  amountBase: string;
+
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryType: CategoryType | null;
+
+  transferAccountId: string | null;
+  transferAccountName: string | null;
+  transferAmount: string | null;
+  transferCurrencyCode: CurrencyCode | null;
+  transferExchangeRateToBase: string | null;
+  transferAmountBase: string | null;
+
+  creditCardPurchaseId: string | null;
+  installmentsCount: number | null;
+  firstDueDate: string | null;
+
+  notes: string | null;
+
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TransactionsListResult {
+  data: TransactionQueryRow[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+  };
+}
 
 export interface TransactionRow {
   id: string;

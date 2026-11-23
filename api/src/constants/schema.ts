@@ -1,0 +1,2 @@
+export const SCHEMA_ADDITIONAL_PROPERTIES = false;
+export const SCHEMA_MIN_PROPERTIES = 1;
