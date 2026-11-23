@@ -111,6 +111,25 @@ export interface TransactionsListResult {
   };
 }
 
+export interface InsertTransactionParams {
+  householdId: string;
+  transactionType: TransactionType;
+  status: TransactionStatus;
+  occurredAt: string | null;
+  description: string | null;
+  amount: number;
+  currencyCode: CurrencyCode;
+  exchangeRateToBase: number;
+  accountId: string;
+  categoryId: string | null;
+  transferAccountId: string | null;
+  transferAmount: number | null;
+  transferCurrencyCode: CurrencyCode | null;
+  transferExchangeRateToBase: number | null;
+  notes: string | null;
+  userId: string;
+}
+
 export interface TransactionRow {
   id: string;
   transaction_type: TransactionType;
@@ -131,4 +150,51 @@ export interface TransactionRow {
   notes: string | null;
   created_by: string | null;
   created_at: Date;
+}
+
+export interface UpdateTransactionBody {
+  accountId?: string;
+  amount?: number;
+  occurredAt?: string;
+  description?: string | null;
+  notes?: string | null;
+  status?: TransactionStatus;
+  exchangeRateToBase?: number;
+
+  categoryId?: string;
+
+  transferAccountId?: string;
+  transferAmount?: number;
+  transferExchangeRateToBase?: number;
+}
+
+export interface TransactionForUpdateRow {
+  id: string;
+
+  transaction_type: TransactionType;
+  status: TransactionQueryStatus;
+  occurred_at: Date;
+
+  description: string | null;
+  amount: string;
+  currency_code: CurrencyCode;
+  exchange_rate_to_base: string;
+  amount_base: string;
+
+  account_id: string;
+  category_id: string | null;
+
+  transfer_account_id: string | null;
+  transfer_amount: string | null;
+  transfer_currency_code: CurrencyCode | null;
+  transfer_exchange_rate_to_base: string | null;
+  transfer_amount_base: string | null;
+
+  notes: string | null;
+
+  account_type: AccountType;
+  transfer_account_type: AccountType | null;
+
+  has_credit_card_purchase: boolean;
+  has_card_payment_allocations: boolean;
 }

@@ -1,7 +1,10 @@
 import type { FastifySchema } from 'fastify';
 
 import { UUID_PATTERN } from '../../constants/patterns.js';
-import { SCHEMA_ADDITIONAL_PROPERTIES } from '../../constants/schema.js';
+import {
+  SCHEMA_ADDITIONAL_PROPERTIES,
+  SCHEMA_MIN_PROPERTIES,
+} from '../../constants/schema.js';
 import { CATEGORY_TYPES } from '../categories/category.constants.js';
 
 import {
@@ -150,6 +153,71 @@ export const TRANSACTION_DETAIL_SCHEMA = {
     required: ['transactionId'],
     properties: {
       transactionId: uuidSchema,
+    },
+  },
+} satisfies FastifySchema;
+
+export const TRANSACTION_UPDATE_SCHEMA = {
+  params: {
+    type: 'object',
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
+    required: ['transactionId'],
+    properties: {
+      transactionId: uuidSchema,
+    },
+  },
+
+  body: {
+    type: 'object',
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
+    minProperties: SCHEMA_MIN_PROPERTIES,
+
+    properties: {
+      accountId: uuidSchema,
+
+      amount: {
+        type: 'number',
+        exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
+      },
+
+      occurredAt: {
+        type: 'string',
+        format: 'date-time',
+      },
+
+      description: {
+        type: ['string', 'null'],
+        maxLength: TRANSACTION_DESCRIPTION_MAX_LENGTH,
+      },
+
+      notes: {
+        type: ['string', 'null'],
+        maxLength: TRANSACTION_NOTES_MAX_LENGTH,
+      },
+
+      status: {
+        type: 'string',
+        enum: [...TRANSACTION_STATUSES],
+      },
+
+      exchangeRateToBase: {
+        type: 'number',
+        exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
+      },
+
+      categoryId: uuidSchema,
+
+      transferAccountId: uuidSchema,
+
+      transferAmount: {
+        type: 'number',
+        exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
+      },
+
+      transferExchangeRateToBase: {
+        type: 'number',
+        exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
+      },
     },
   },
 } satisfies FastifySchema;

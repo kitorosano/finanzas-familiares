@@ -8,12 +8,13 @@ import type { AccountValidationRow } from '../accounts/account.types.js';
 
 import type {
   CreatedPurchaseRow,
+  InsertTransactionParams,
   ListTransactionsQuery,
+  TransactionForUpdateRow,
   TransactionQueryRow,
   TransactionRow,
   TransactionsListResult,
   TransactionStatus,
-  TransactionType,
 } from './transaction.types.js';
 
 const TRANSACTION_SELECT = `
@@ -254,6 +255,104 @@ const TRANSACTION_QUERIES = {
 
     LIMIT 1
   `,
+
+  getForUpdate: `
+    SELECT
+      t.id::text AS id,
+      t.transaction_type,
+      t.status,
+      t.occurred_at,
+      t.description,
+
+      t.amount::text AS amount,
+      t.currency_code,
+      t.exchange_rate_to_base::text AS exchange_rate_to_base,
+      t.amount_base::text AS amount_base,
+
+      t.account_id::text AS account_id,
+      t.category_id::text AS category_id,
+
+      t.transfer_account_id::text AS transfer_account_id,
+      t.transfer_amount::text AS transfer_amount,
+      t.transfer_currency_code,
+      t.transfer_exchange_rate_to_base::text AS transfer_exchange_rate_to_base,
+      t.transfer_amount_base::text AS transfer_amount_base,
+
+      t.notes,
+
+      a.account_type,
+      ta.account_type AS transfer_account_type,
+
+      EXISTS (
+        SELECT 1
+        FROM credit_card_purchases cp
+        WHERE cp.transaction_id = t.id
+          AND cp.household_id = t.household_id
+      ) AS has_credit_card_purchase,
+
+      EXISTS (
+        SELECT 1
+        FROM credit_card_statement_payments p
+        WHERE p.transaction_id = t.id
+          AND p.household_id = t.household_id
+      ) AS has_card_payment_allocations
+
+    FROM transactions t
+
+    JOIN accounts a
+      ON a.id = t.account_id
+     AND a.household_id = t.household_id
+
+    LEFT JOIN accounts ta
+      ON ta.id = t.transfer_account_id
+     AND ta.household_id = t.household_id
+
+    WHERE t.household_id = $1
+      AND t.id = $2
+
+    FOR UPDATE OF t
+  `,
+
+  update: `
+    UPDATE transactions
+    SET
+      occurred_at = $3::timestamptz,
+      description = $4,
+
+      amount = $5::numeric,
+      currency_code = $6::char(3),
+      exchange_rate_to_base = $7::numeric,
+
+      amount_base = ROUND(
+        ROUND($5::numeric, 6) * ROUND($7::numeric, 10),
+        6
+      ),
+
+      account_id = $8::uuid,
+      category_id = $9::uuid,
+      status = $10,
+
+      transfer_account_id = $11::uuid,
+      transfer_amount = $12::numeric,
+      transfer_currency_code = $13::char(3),
+      transfer_exchange_rate_to_base = $14::numeric,
+
+      transfer_amount_base = CASE
+        WHEN $12::numeric IS NULL THEN NULL
+        ELSE ROUND(
+          ROUND($12::numeric, 6) * ROUND($14::numeric, 10),
+          6
+        )
+      END,
+
+      notes = $15,
+      updated_by = $16
+
+    WHERE household_id = $1
+      AND id = $2
+
+    RETURNING id::text AS id
+  `,
 } as const;
 
 export async function getHouseholdBaseCurrency(
@@ -279,25 +378,6 @@ export async function lockAccounts(
   );
 
   return result.rows;
-}
-
-export interface InsertTransactionParams {
-  householdId: string;
-  transactionType: TransactionType;
-  status: TransactionStatus;
-  occurredAt: string | null;
-  description: string | null;
-  amount: number;
-  currencyCode: CurrencyCode;
-  exchangeRateToBase: number;
-  accountId: string;
-  categoryId: string | null;
-  transferAccountId: string | null;
-  transferAmount: number | null;
-  transferCurrencyCode: CurrencyCode | null;
-  transferExchangeRateToBase: number | null;
-  notes: string | null;
-  userId: string;
 }
 
 export async function insertTransaction(
@@ -385,6 +465,84 @@ export async function getTransactionById(
   transactionId: string,
 ): Promise<TransactionQueryRow | undefined> {
   const result = await db.query<TransactionQueryRow>(
+    TRANSACTION_QUERIES.getById,
+    [householdId, transactionId],
+  );
+
+  return result.rows[0];
+}
+
+export async function getTransactionForUpdate(
+  client: PoolClient,
+  householdId: string,
+  transactionId: string,
+): Promise<TransactionForUpdateRow | undefined> {
+  const result = await client.query<TransactionForUpdateRow>(
+    TRANSACTION_QUERIES.getForUpdate,
+    [householdId, transactionId],
+  );
+
+  return result.rows[0];
+}
+
+export interface UpdateTransactionParams {
+  occurredAt: string;
+  description: string | null;
+
+  amount: number;
+  currencyCode: CurrencyCode;
+  exchangeRateToBase: number;
+
+  accountId: string;
+  categoryId: string | null;
+  status: TransactionStatus;
+
+  transferAccountId: string | null;
+  transferAmount: number | null;
+  transferCurrencyCode: CurrencyCode | null;
+  transferExchangeRateToBase: number | null;
+
+  notes: string | null;
+  userId: string;
+}
+
+export async function updateTransaction(
+  client: PoolClient,
+  householdId: string,
+  transactionId: string,
+  values: UpdateTransactionParams,
+): Promise<boolean> {
+  const result = await client.query<{ id: string }>(
+    TRANSACTION_QUERIES.update,
+    [
+      householdId,
+      transactionId,
+      values.occurredAt,
+      values.description,
+      values.amount,
+      values.currencyCode,
+      values.exchangeRateToBase,
+      values.accountId,
+      values.categoryId,
+      values.status,
+      values.transferAccountId,
+      values.transferAmount,
+      values.transferCurrencyCode,
+      values.transferExchangeRateToBase,
+      values.notes,
+      values.userId,
+    ],
+  );
+
+  return result.rows.length > 0;
+}
+
+export async function getTransactionByIdWithClient(
+  client: PoolClient,
+  householdId: string,
+  transactionId: string,
+): Promise<TransactionQueryRow | undefined> {
+  const result = await client.query<TransactionQueryRow>(
     TRANSACTION_QUERIES.getById,
     [householdId, transactionId],
   );

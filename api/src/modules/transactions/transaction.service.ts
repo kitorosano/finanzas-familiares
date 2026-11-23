@@ -15,9 +15,12 @@ import {
   createCreditCardPurchase,
   getHouseholdBaseCurrency,
   getTransactionById as getTransactionByIdFromDb,
+  getTransactionByIdWithClient,
+  getTransactionForUpdate,
   insertTransaction,
   listTransactions as listTransactionsFromDb,
   lockAccounts,
+  updateTransaction as updateTransactionInDb,
 } from './transaction.db.js';
 import type {
   CreateTransactionBody,
@@ -26,6 +29,7 @@ import type {
   TransactionQueryRow,
   TransactionStatus,
   TransactionsListResult,
+  UpdateTransactionBody,
 } from './transaction.types.js';
 
 function resolveExchangeRate(
@@ -356,4 +360,342 @@ export async function getTransactionById(
   }
 
   return transaction;
+}
+
+export async function updateTransaction(
+  request: FastifyRequest,
+  transactionId: string,
+  body: UpdateTransactionBody,
+): Promise<TransactionQueryRow> {
+  const scope = getHouseholdScope(request);
+
+  return withTransaction(async (client) => {
+    await setAuditActor(client, scope.userId);
+
+    const current = await getTransactionForUpdate(
+      client,
+      scope.householdId,
+      transactionId,
+    );
+
+    if (!current) {
+      throw new AppError(
+        404,
+        ERROR_CODES.TRANSACTION_NOT_FOUND,
+        'No se encontró el movimiento en el hogar',
+      );
+    }
+
+    if (current.status === 'void') {
+      throw new AppError(
+        409,
+        ERROR_CODES.TRANSACTION_ALREADY_VOID,
+        'No se puede modificar un movimiento anulado',
+      );
+    }
+
+    const isTransfer = current.transaction_type === 'transfer';
+
+    const hasTransferFields =
+      body.transferAccountId !== undefined ||
+      body.transferAmount !== undefined ||
+      body.transferExchangeRateToBase !== undefined;
+
+    if (
+      (isTransfer && body.categoryId !== undefined) ||
+      (!isTransfer && hasTransferFields)
+    ) {
+      throw new AppError(
+        400,
+        ERROR_CODES.INVALID_TRANSACTION_UPDATE_FIELDS,
+        'Los campos enviados no corresponden al tipo de movimiento',
+      );
+    }
+
+    // Las compras y los pagos de tarjetas tienen dependencias
+    // financieras que no deben modificarse mediante un PATCH genérico.
+    if (
+      current.has_credit_card_purchase ||
+      current.has_card_payment_allocations ||
+      current.account_type === 'credit_card' ||
+      current.transfer_account_type === 'credit_card'
+    ) {
+      throw new AppError(
+        409,
+        ERROR_CODES.TRANSACTION_REQUIRES_SPECIALIZED_OPERATION,
+        'Este movimiento está relacionado con una tarjeta de crédito y requiere una operación especializada',
+      );
+    }
+
+    const household = await getHouseholdBaseCurrency(client, scope.householdId);
+
+    if (!household) {
+      throw new AppError(
+        404,
+        ERROR_CODES.HOUSEHOLD_NOT_FOUND,
+        'No se encontró el hogar de la sesión',
+      );
+    }
+
+    const accountId = body.accountId ?? current.account_id;
+
+    const transferAccountId = isTransfer
+      ? (body.transferAccountId ?? current.transfer_account_id)
+      : null;
+
+    if (isTransfer && (!transferAccountId || accountId === transferAccountId)) {
+      throw new AppError(
+        400,
+        ERROR_CODES.INVALID_TRANSFER_ACCOUNTS,
+        'Las cuentas de origen y destino deben ser diferentes',
+      );
+    }
+
+    const accountIds = [
+      ...new Set(
+        isTransfer ? [accountId, transferAccountId as string] : [accountId],
+      ),
+    ];
+
+    const accountsById = new Map(
+      (await lockAccounts(client, scope.householdId, accountIds)).map(
+        (account) => [account.id, account],
+      ),
+    );
+
+    const sourceAccount = accountsById.get(accountId);
+
+    if (!sourceAccount) {
+      throw new AppError(
+        404,
+        ERROR_CODES.ACCOUNT_NOT_FOUND,
+        'No se encontró la cuenta de origen en el hogar',
+      );
+    }
+
+    if (
+      body.accountId !== undefined &&
+      body.accountId !== current.account_id &&
+      !sourceAccount.is_active
+    ) {
+      throw new AppError(
+        400,
+        ERROR_CODES.ACCOUNT_INACTIVE,
+        'La nueva cuenta de origen está inactiva',
+      );
+    }
+
+    if (sourceAccount.account_type === 'credit_card') {
+      throw new AppError(
+        409,
+        ERROR_CODES.TRANSACTION_REQUIRES_SPECIALIZED_OPERATION,
+        'No se puede mover un movimiento ordinario a una tarjeta de crédito mediante esta operación',
+      );
+    }
+
+    let destinationAccount: AccountValidationRow | undefined;
+
+    if (isTransfer && transferAccountId) {
+      destinationAccount = accountsById.get(transferAccountId);
+
+      if (!destinationAccount) {
+        throw new AppError(
+          404,
+          ERROR_CODES.TRANSFER_ACCOUNT_NOT_FOUND,
+          'No se encontró la cuenta de destino en el hogar',
+        );
+      }
+
+      if (
+        body.transferAccountId !== undefined &&
+        body.transferAccountId !== current.transfer_account_id &&
+        !destinationAccount.is_active
+      ) {
+        throw new AppError(
+          400,
+          ERROR_CODES.TRANSFER_ACCOUNT_INACTIVE,
+          'La nueva cuenta de destino está inactiva',
+        );
+      }
+
+      if (destinationAccount.account_type === 'credit_card') {
+        throw new AppError(
+          409,
+          ERROR_CODES.TRANSACTION_REQUIRES_SPECIALIZED_OPERATION,
+          'No se puede transferir a una tarjeta de crédito mediante esta operación',
+        );
+      }
+    }
+
+    let categoryId: string | null = isTransfer ? null : current.category_id;
+
+    if (!isTransfer && body.categoryId !== undefined) {
+      const category = await getActiveCategories(
+        client,
+        scope.householdId,
+        body.categoryId,
+      );
+
+      if (!category) {
+        throw new AppError(
+          404,
+          ERROR_CODES.CATEGORY_NOT_FOUND,
+          'No se encontró una categoría activa en el hogar',
+        );
+      }
+
+      if (category.categoryType !== current.transaction_type) {
+        throw new AppError(
+          400,
+          ERROR_CODES.CATEGORY_TYPE_MISMATCH,
+          'La categoría no corresponde al tipo de movimiento',
+        );
+      }
+
+      categoryId = body.categoryId;
+    }
+
+    const status: TransactionStatus =
+      body.status ?? (current.status as TransactionStatus);
+
+    const amount = body.amount ?? Number(current.amount);
+
+    const occurredAt = body.occurredAt ?? current.occurred_at.toISOString();
+
+    const description =
+      body.description !== undefined ? body.description : current.description;
+
+    const notes = body.notes !== undefined ? body.notes : current.notes;
+
+    // Preservar la tasa histórica si la moneda de origen no cambia.
+    // Si cambia de moneda, se exige una tasa nueva (salvo moneda base).
+    const sourceRateCandidate =
+      body.exchangeRateToBase ??
+      (sourceAccount.currency_code === current.currency_code
+        ? Number(current.exchange_rate_to_base)
+        : undefined);
+
+    const sourceExchangeRate = resolveExchangeRate(
+      sourceRateCandidate,
+      sourceAccount.currency_code,
+      household.base_currency_code,
+    );
+
+    let transferAmount: number | null = null;
+    let transferCurrencyCode: CurrencyCode | null = null;
+    let transferExchangeRate: number | null = null;
+
+    if (isTransfer && destinationAccount) {
+      transferAmount = body.transferAmount ?? Number(current.transfer_amount);
+
+      transferCurrencyCode = destinationAccount.currency_code;
+
+      const transferRateCandidate =
+        body.transferExchangeRateToBase ??
+        (destinationAccount.currency_code === sourceAccount.currency_code
+          ? sourceExchangeRate
+          : destinationAccount.currency_code === current.transfer_currency_code
+            ? Number(current.transfer_exchange_rate_to_base)
+            : undefined);
+
+      transferExchangeRate = resolveExchangeRate(
+        transferRateCandidate,
+        destinationAccount.currency_code,
+        household.base_currency_code,
+      );
+
+      if (
+        destinationAccount.currency_code === sourceAccount.currency_code &&
+        transferExchangeRate !== sourceExchangeRate
+      ) {
+        throw new AppError(
+          400,
+          ERROR_CODES.TRANSFER_EXCHANGE_RATE_MISMATCH,
+          'Las cuentas usan la misma moneda y deben tener la misma tasa de conversión',
+        );
+      }
+    }
+
+    const oldValues = {
+      transactionType: current.transaction_type,
+      status: current.status,
+      occurredAt: current.occurred_at.toISOString(),
+      description: current.description,
+      amount: current.amount,
+      currencyCode: current.currency_code,
+      exchangeRateToBase: current.exchange_rate_to_base,
+      amountBase: current.amount_base,
+      accountId: current.account_id,
+      categoryId: current.category_id,
+      transferAccountId: current.transfer_account_id,
+      transferAmount: current.transfer_amount,
+      transferCurrencyCode: current.transfer_currency_code,
+      transferExchangeRateToBase: current.transfer_exchange_rate_to_base,
+      transferAmountBase: current.transfer_amount_base,
+      notes: current.notes,
+    };
+
+    const updated = await updateTransactionInDb(
+      client,
+      scope.householdId,
+      transactionId,
+      {
+        occurredAt,
+        description,
+        amount,
+        currencyCode: sourceAccount.currency_code,
+        exchangeRateToBase: sourceExchangeRate,
+        accountId,
+        categoryId,
+        status,
+        transferAccountId,
+        transferAmount,
+        transferCurrencyCode,
+        transferExchangeRateToBase: transferExchangeRate,
+        notes,
+        userId: scope.userId,
+      },
+    );
+
+    if (!updated) {
+      throw new Error('Transaction update did not return a row');
+    }
+
+    const transaction = await getTransactionByIdWithClient(
+      client,
+      scope.householdId,
+      transactionId,
+    );
+
+    if (!transaction) {
+      throw new Error('Updated transaction could not be retrieved');
+    }
+
+    await writeAuditLog(client, scope, {
+      action: 'update',
+      entityName: 'transactions',
+      entityId: transactionId,
+      oldValues,
+      newValues: {
+        transactionType: transaction.transactionType,
+        status: transaction.status,
+        occurredAt: transaction.occurredAt.toISOString(),
+        description: transaction.description,
+        amount: transaction.amount,
+        currencyCode: transaction.currencyCode,
+        exchangeRateToBase: transaction.exchangeRateToBase,
+        amountBase: transaction.amountBase,
+        accountId: transaction.accountId,
+        categoryId: transaction.categoryId,
+        transferAccountId: transaction.transferAccountId,
+        transferAmount: transaction.transferAmount,
+        transferCurrencyCode: transaction.transferCurrencyCode,
+        transferExchangeRateToBase: transaction.transferExchangeRateToBase,
+        transferAmountBase: transaction.transferAmountBase,
+        notes: transaction.notes,
+      },
+    });
+
+    return transaction;
+  });
 }
