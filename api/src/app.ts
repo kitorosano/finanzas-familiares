@@ -11,6 +11,7 @@ import { accountRoutes } from './modules/accounts/account.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { authenticateRequest } from './modules/auth/authenticate.js';
+import { categoryRoutes } from './modules/categories/category.routes.js';
 import { creditCardRoutes } from './modules/credit-cards/credit-card.routes.js';
 import { transactionRoutes } from './modules/transactions/transaction.routes.js';
 
@@ -73,6 +74,10 @@ export function buildApp(): FastifyInstance {
 
   app.register(accountRoutes, {
     prefix: '/accounts',
+  });
+
+  app.register(categoryRoutes, {
+    prefix: '/categories',
   });
 
   app.get('/health', async () => ({
