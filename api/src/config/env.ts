@@ -11,6 +11,18 @@ function requiredSecret(name: string): string {
   return value;
 }
 
+function positiveIntegerEnv(name: string): number {
+  const errorMessage = `${name} must be a positive integer`;
+  const rawValue = requiredEnv(name, errorMessage);
+  const value = Number(rawValue);
+
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 
 if (!['development', 'test', 'production'].includes(nodeEnv)) {
@@ -24,6 +36,6 @@ export const env = Object.freeze({
   jwtAccessSecret: requiredSecret('JWT_ACCESS_SECRET'),
   refreshTokenPepper: requiredSecret('REFRESH_TOKEN_PEPPER'),
 
-  accessTokenTtlSeconds: 15 * 60, // 15 minutes
-  refreshTokenTtlSeconds: 30 * 24 * 60 * 60, // 30 days
+  accessTokenTtlSeconds: positiveIntegerEnv('ACCESS_TOKEN_TTL_SECONDS'),
+  refreshTokenTtlSeconds: positiveIntegerEnv('REFRESH_TOKEN_TTL_SECONDS'),
 });
