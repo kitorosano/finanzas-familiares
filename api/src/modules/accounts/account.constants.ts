@@ -6,3 +6,5 @@ export const ACCOUNT_TYPES = [
   'investment',
   'other',
 ] as const;
+
+export const ACCOUNT_INCLUDE_INACTIVE_DEFAULT = false;

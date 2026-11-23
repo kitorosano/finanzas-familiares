@@ -20,3 +20,8 @@ export const REFRESH_COOKIE_OPTIONS = {
   path: '/auth',
   maxAge: env.refreshTokenTtlSeconds,
 };
+
+export const AUTH_EMAIL_MIN_LENGTH = 3;
+export const AUTH_EMAIL_MAX_LENGTH = 254;
+export const AUTH_PASSWORD_MIN_LENGTH = 1;
+export const AUTH_PASSWORD_MAX_LENGTH = 128;
