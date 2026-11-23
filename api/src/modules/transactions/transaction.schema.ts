@@ -1,6 +1,7 @@
 import type { FastifySchema } from 'fastify';
 
 import { UUID_PATTERN } from '../../constants/patterns.js';
+import { CATEGORY_TYPES } from '../categories/category.constants.js';
 
 import {
   TRANSACTION_STATUSES,
@@ -51,9 +52,7 @@ export const TRANSACTION_CREATE_SCHEMA = {
           ...transactionCommonProperties,
           transactionType: {
             type: 'string',
-            enum: TRANSACTION_TYPES.filter(
-              (transactionType) => transactionType !== 'transfer',
-            ),
+            enum: [...CATEGORY_TYPES],
           },
           categoryId: uuidSchema,
           installmentsCount: {

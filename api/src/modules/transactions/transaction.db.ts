@@ -5,7 +5,6 @@ import type { CurrencyCode } from '../../types/money.js';
 import type { AccountValidationRow } from '../accounts/account.types.js';
 
 import type {
-  CategoryRow,
   CreatedPurchaseRow,
   CreateTransactionBody,
   TransactionRow,
@@ -31,15 +30,6 @@ const TRANSACTION_QUERIES = {
       AND id = ANY($2::uuid[])
     ORDER BY id
     FOR UPDATE
-  `,
-  getCategory: `
-    SELECT
-      id::text AS id,
-      category_type
-    FROM categories
-    WHERE id = $1
-      AND (household_id = $2 OR household_id IS NULL)
-      AND is_active = TRUE
   `,
   insert: `
     INSERT INTO transactions (
@@ -146,19 +136,6 @@ export async function lockAccounts(
   );
 
   return result.rows;
-}
-
-export async function getCategory(
-  client: PoolClient,
-  categoryId: string,
-  householdId: string,
-): Promise<CategoryRow | undefined> {
-  const result = await client.query<CategoryRow>(
-    TRANSACTION_QUERIES.getCategory,
-    [categoryId, householdId],
-  );
-
-  return result.rows[0];
 }
 
 export interface InsertTransactionParams {

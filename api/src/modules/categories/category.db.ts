@@ -67,6 +67,14 @@ const CATEGORY_QUERIES = {
     LIMIT 1
   `,
 
+  getActiveCategories: `
+    ${CATEGORY_SELECT}
+      AND c.id = $2
+      AND c.is_active = TRUE
+
+    LIMIT 1
+  `,
+
   getParentForCreate: `
     SELECT
       id::text AS id,
@@ -309,6 +317,19 @@ export async function getCategoryById(
     householdId,
     categoryId,
   ]);
+
+  return result.rows[0];
+}
+
+export async function getActiveCategories(
+  client: PoolClient,
+  householdId: string,
+  categoryId: string,
+): Promise<CategoryRow | undefined> {
+  const result = await client.query<CategoryRow>(
+    CATEGORY_QUERIES.getActiveCategories,
+    [householdId, categoryId],
+  );
 
   return result.rows[0];
 }

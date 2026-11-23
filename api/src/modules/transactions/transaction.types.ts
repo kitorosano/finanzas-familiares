@@ -1,4 +1,5 @@
 import type { CurrencyCode } from '../../types/money.js';
+import type { CategoryType } from '../categories/category.types.js';
 import type {
   TRANSACTION_STATUSES,
   TRANSACTION_TYPES,
@@ -7,11 +8,6 @@ import type {
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
-
-export interface CategoryRow {
-  id: string;
-  category_type: Exclude<TransactionType, 'transfer'>;
-}
 
 export interface CreatedPurchaseRow {
   purchase_id: string;
@@ -33,7 +29,7 @@ export interface CreateTransactionBase {
 }
 
 export interface CreateIncomeExpenseBody extends CreateTransactionBase {
-  transactionType: Exclude<TransactionType, 'transfer'>;
+  transactionType: CategoryType;
   categoryId: string;
   installmentsCount?: number;
 }

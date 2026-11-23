@@ -8,11 +8,11 @@ import type { AccountValidationRow } from '../accounts/account.types.js';
 import { setAuditActor } from '../audit/audit-context.js';
 import { writeAuditLog } from '../audit/audit.db.js';
 import { getHouseholdScope } from '../authorization/household-context.js';
+import { getActiveCategories } from '../categories/category.db.js';
 
 import type { FastifyRequest } from 'fastify';
 import {
   createCreditCardPurchase,
-  getCategory,
   getHouseholdBaseCurrency,
   insertTransaction,
   lockAccounts,
@@ -146,7 +146,11 @@ export async function createTransaction(
     if (!isTransfer) {
       categoryId = body.categoryId;
 
-      const category = await getCategory(client, categoryId, scope.householdId);
+      const category = await getActiveCategories(
+        client,
+        scope.householdId,
+        categoryId,
+      );
 
       if (!category) {
         throw new AppError(
@@ -156,7 +160,7 @@ export async function createTransaction(
         );
       }
 
-      if (category.category_type !== body.transactionType) {
+      if (category.categoryType !== body.transactionType) {
         throw new AppError(
           400,
           ERROR_CODES.CATEGORY_TYPE_MISMATCH,
