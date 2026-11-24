@@ -5,6 +5,7 @@ import {
   TRANSACTION_DETAIL_SCHEMA,
   TRANSACTION_LIST_SCHEMA,
   TRANSACTION_UPDATE_SCHEMA,
+  TRANSACTION_VOID_SCHEMA,
 } from './transaction.schema.js';
 
 import {
@@ -12,12 +13,14 @@ import {
   getTransactionById,
   listTransactions,
   updateTransaction,
+  voidTransaction,
 } from './transaction.service.js';
 
 import type {
   CreateTransactionBody,
   ListTransactionsQuery,
   UpdateTransactionBody,
+  VoidTransactionBody,
 } from './transaction.types.js';
 
 interface TransactionParams {
@@ -65,6 +68,28 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request) => {
       const transaction = await updateTransaction(
+        request,
+        request.params.transactionId,
+        request.body,
+      );
+
+      return {
+        data: transaction,
+      };
+    },
+  );
+
+  app.post<{
+    Params: TransactionParams;
+    Body: VoidTransactionBody;
+  }>(
+    '/:transactionId/void',
+    {
+      preHandler: [app.authenticate],
+      schema: TRANSACTION_VOID_SCHEMA,
+    },
+    async (request) => {
+      const transaction = await voidTransaction(
         request,
         request.params.transactionId,
         request.body,

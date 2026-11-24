@@ -21,6 +21,8 @@ import {
   TRANSACTION_QUERY_STATUSES,
   TRANSACTION_STATUSES,
   TRANSACTION_TYPES,
+  TRANSACTION_VOID_REASON_MAX_LENGTH,
+  TRANSACTION_VOID_REASON_MIN_LENGTH,
 } from './transaction.constants.js';
 
 const uuidSchema = {
@@ -217,6 +219,30 @@ export const TRANSACTION_UPDATE_SCHEMA = {
       transferExchangeRateToBase: {
         type: 'number',
         exclusiveMinimum: TRANSACTION_AMOUNT_EXCLUSIVE_MINIMUM,
+      },
+    },
+  },
+} satisfies FastifySchema;
+
+export const TRANSACTION_VOID_SCHEMA = {
+  params: {
+    type: 'object',
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
+    required: ['transactionId'],
+    properties: {
+      transactionId: uuidSchema,
+    },
+  },
+
+  body: {
+    type: 'object',
+    additionalProperties: SCHEMA_ADDITIONAL_PROPERTIES,
+    required: ['reason'],
+    properties: {
+      reason: {
+        type: 'string',
+        minLength: TRANSACTION_VOID_REASON_MIN_LENGTH,
+        maxLength: TRANSACTION_VOID_REASON_MAX_LENGTH,
       },
     },
   },

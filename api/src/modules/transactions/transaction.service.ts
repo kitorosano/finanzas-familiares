@@ -21,6 +21,7 @@ import {
   listTransactions as listTransactionsFromDb,
   lockAccounts,
   updateTransaction as updateTransactionInDb,
+  voidTransaction as voidTransactionInDb,
 } from './transaction.db.js';
 import type {
   CreateTransactionBody,
@@ -30,6 +31,7 @@ import type {
   TransactionStatus,
   TransactionsListResult,
   UpdateTransactionBody,
+  VoidTransactionBody,
 } from './transaction.types.js';
 
 function resolveExchangeRate(
@@ -693,6 +695,134 @@ export async function updateTransaction(
         transferExchangeRateToBase: transaction.transferExchangeRateToBase,
         transferAmountBase: transaction.transferAmountBase,
         notes: transaction.notes,
+      },
+    });
+
+    return transaction;
+  });
+}
+
+export async function voidTransaction(
+  request: FastifyRequest,
+  transactionId: string,
+  body: VoidTransactionBody,
+): Promise<TransactionQueryRow> {
+  const scope = getHouseholdScope(request);
+  const reason = body.reason.trim();
+
+  if (reason.length === 0) {
+    throw new AppError(
+      400,
+      ERROR_CODES.INVALID_TRANSACTION_VOID_REASON,
+      'El motivo de anulación no puede estar vacío',
+    );
+  }
+
+  return withTransaction(async (client) => {
+    await setAuditActor(client, scope.userId);
+
+    const current = await getTransactionForUpdate(
+      client,
+      scope.householdId,
+      transactionId,
+    );
+
+    if (!current) {
+      throw new AppError(
+        404,
+        ERROR_CODES.TRANSACTION_NOT_FOUND,
+        'No se encontró el movimiento en el hogar',
+      );
+    }
+
+    if (current.status === 'void') {
+      throw new AppError(
+        409,
+        ERROR_CODES.TRANSACTION_ALREADY_VOID,
+        'El movimiento ya se encuentra anulado',
+      );
+    }
+
+    const requiresSpecializedOperation =
+      current.has_credit_card_purchase ||
+      current.has_card_payment_allocations ||
+      current.has_savings_goal_contribution ||
+      current.account_type === 'credit_card' ||
+      current.transfer_account_type === 'credit_card';
+
+    if (requiresSpecializedOperation) {
+      throw new AppError(
+        409,
+        ERROR_CODES.TRANSACTION_REQUIRES_SPECIALIZED_OPERATION,
+        'Este movimiento está relacionado con una operación financiera especializada y no puede anularse mediante esta operación',
+      );
+    }
+
+    const oldValues = {
+      transactionType: current.transaction_type,
+      status: current.status,
+      occurredAt: current.occurred_at.toISOString(),
+      description: current.description,
+      amount: current.amount,
+      currencyCode: current.currency_code,
+      exchangeRateToBase: current.exchange_rate_to_base,
+      amountBase: current.amount_base,
+      accountId: current.account_id,
+      categoryId: current.category_id,
+      transferAccountId: current.transfer_account_id,
+      transferAmount: current.transfer_amount,
+      transferCurrencyCode: current.transfer_currency_code,
+      transferExchangeRateToBase: current.transfer_exchange_rate_to_base,
+      transferAmountBase: current.transfer_amount_base,
+      notes: current.notes,
+      voidedAt: current.voided_at?.toISOString() ?? null,
+    };
+
+    const voidResult = await voidTransactionInDb(
+      client,
+      scope.householdId,
+      transactionId,
+      scope.userId,
+    );
+
+    if (!voidResult) {
+      throw new Error('Transaction void did not return a row');
+    }
+
+    const transaction = await getTransactionByIdWithClient(
+      client,
+      scope.householdId,
+      transactionId,
+    );
+
+    if (!transaction) {
+      throw new Error('Voided transaction could not be retrieved');
+    }
+
+    await writeAuditLog(client, scope, {
+      action: 'void',
+      entityName: 'transactions',
+      entityId: transactionId,
+      oldValues,
+      newValues: {
+        transactionType: transaction.transactionType,
+        status: transaction.status,
+        occurredAt: transaction.occurredAt.toISOString(),
+        description: transaction.description,
+        amount: transaction.amount,
+        currencyCode: transaction.currencyCode,
+        exchangeRateToBase: transaction.exchangeRateToBase,
+        amountBase: transaction.amountBase,
+        accountId: transaction.accountId,
+        categoryId: transaction.categoryId,
+        transferAccountId: transaction.transferAccountId,
+        transferAmount: transaction.transferAmount,
+        transferCurrencyCode: transaction.transferCurrencyCode,
+        transferExchangeRateToBase: transaction.transferExchangeRateToBase,
+        transferAmountBase: transaction.transferAmountBase,
+        notes: transaction.notes,
+        voidedAt: transaction.voidedAt?.toISOString() ?? null,
+        reason,
       },
     });
 

@@ -24,6 +24,7 @@ const TRANSACTION_SELECT = `
     t.status,
 
     t.occurred_at AS "occurredAt",
+    t.voided_at AS "voidedAt",
     t.description,
 
     t.amount::text AS amount,
@@ -262,6 +263,7 @@ const TRANSACTION_QUERIES = {
       t.transaction_type,
       t.status,
       t.occurred_at,
+      t.voided_at,
       t.description,
 
       t.amount::text AS amount,
@@ -295,7 +297,13 @@ const TRANSACTION_QUERIES = {
         FROM credit_card_statement_payments p
         WHERE p.transaction_id = t.id
           AND p.household_id = t.household_id
-      ) AS has_card_payment_allocations
+      ) AS has_card_payment_allocations,
+       
+      EXISTS (
+        SELECT 1
+        FROM savings_goal_contributions sgc
+        WHERE sgc.transaction_id = t.id
+      ) AS has_savings_goal_contribution
 
     FROM transactions t
 
@@ -352,6 +360,22 @@ const TRANSACTION_QUERIES = {
       AND id = $2
 
     RETURNING id::text AS id
+  `,
+
+  void: `
+    UPDATE transactions
+    SET
+      status = 'void',
+      voided_at = NOW(),
+      updated_by = $3
+
+    WHERE household_id = $1
+      AND id = $2
+      AND status IN ('pending', 'posted')
+
+    RETURNING
+      id::text AS id,
+      voided_at
   `,
 } as const;
 
@@ -546,6 +570,20 @@ export async function getTransactionByIdWithClient(
     TRANSACTION_QUERIES.getById,
     [householdId, transactionId],
   );
+
+  return result.rows[0];
+}
+
+export async function voidTransaction(
+  client: PoolClient,
+  householdId: string,
+  transactionId: string,
+  userId: string,
+): Promise<{ id: string; voided_at: Date } | undefined> {
+  const result = await client.query<{
+    id: string;
+    voided_at: Date;
+  }>(TRANSACTION_QUERIES.void, [householdId, transactionId, userId]);
 
   return result.rows[0];
 }

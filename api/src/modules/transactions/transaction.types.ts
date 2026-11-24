@@ -68,6 +68,7 @@ export interface TransactionQueryRow {
   transactionType: TransactionType;
   status: TransactionQueryStatus;
   occurredAt: Date;
+  voidedAt: Date | null;
 
   description: string | null;
   amount: string;
@@ -174,6 +175,7 @@ export interface TransactionForUpdateRow {
   transaction_type: TransactionType;
   status: TransactionQueryStatus;
   occurred_at: Date;
+  voided_at: Date | null;
 
   description: string | null;
   amount: string;
@@ -197,4 +199,9 @@ export interface TransactionForUpdateRow {
 
   has_credit_card_purchase: boolean;
   has_card_payment_allocations: boolean;
+  has_savings_goal_contribution: boolean;
+}
+
+export interface VoidTransactionBody {
+  reason: string;
 }
