@@ -14,6 +14,7 @@ import { authenticateRequest } from './modules/auth/authenticate.js';
 import { budgetRoutes } from './modules/budgets/budget.routes.js';
 import { categoryRoutes } from './modules/categories/category.routes.js';
 import { creditCardRoutes } from './modules/credit-cards/credit-card.routes.js';
+import { recurringTransactionRoutes } from './modules/recurring-transactions/recurring-transaction.routes.js';
 import { savingsGoalRoutes } from './modules/savings-goals/savings-goal.routes.js';
 import { transactionRoutes } from './modules/transactions/transaction.routes.js';
 
@@ -88,6 +89,10 @@ export function buildApp(): FastifyInstance {
 
   app.register(savingsGoalRoutes, {
     prefix: '/savings-goals',
+  });
+
+  app.register(recurringTransactionRoutes, {
+    prefix: '/recurring-transactions',
   });
 
   app.get('/health', async () => ({
