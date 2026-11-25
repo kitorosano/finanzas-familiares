@@ -3,6 +3,7 @@ import { AppError } from '../../errors/app-error.js';
 import { ERROR_CODES } from '../../errors/error-codes.js';
 import { isPositiveFiniteNumber } from '../../utils/validation.js';
 
+import { lockAccounts } from '../accounts/account.db.js';
 import { setAuditActor } from '../audit/audit-context.js';
 import { writeAuditLog } from '../audit/audit.db.js';
 import type { HouseholdScope } from '../authorization/authorization.types.js';
@@ -25,7 +26,6 @@ import {
   getSavingsGoalForUpdate,
   listSavingsGoalContributions as listContributionsFromDb,
   listSavingsGoals as listSavingsGoalsFromDb,
-  lockSavingsGoalAccounts,
   updateSavingsGoal as updateSavingsGoalInDb,
   voidSavingsGoalContribution as voidContributionInDb,
 } from './savings-goal.db.js';
@@ -348,7 +348,7 @@ export async function createSavingsGoalContribution(
       );
     }
 
-    const accounts = await lockSavingsGoalAccounts(client, scope.householdId, [
+    const accounts = await lockAccounts(client, scope.householdId, [
       body.sourceAccountId,
       body.destinationAccountId,
     ]);

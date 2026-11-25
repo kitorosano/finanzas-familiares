@@ -15,7 +15,6 @@ import type {
   CreatedSavingsGoalContributionRow,
   ListSavingsGoalContributionsQuery,
   ListSavingsGoalsQuery,
-  SavingsGoalAccountRow,
   SavingsGoalBaseCurrencyRow,
   SavingsGoalContributionForUpdateRow,
   SavingsGoalContributionRow,
@@ -239,24 +238,6 @@ const SAVINGS_GOAL_QUERIES = {
       AND id = $2
 
     RETURNING id::text AS id
-  `,
-
-  lockAccounts: `
-    SELECT
-      id::text AS id,
-      name,
-      account_type,
-      currency_code,
-      is_active
-
-    FROM accounts
-
-    WHERE household_id = $1
-      AND id = ANY($2::uuid[])
-
-    ORDER BY id
-
-    FOR UPDATE
   `,
 
   listContributions: `
@@ -512,23 +493,6 @@ export async function updateSavingsGoal(
   );
 
   return result.rows.length > 0;
-}
-
-// =======================================================
-// ACCOUNTS
-// =======================================================
-
-export async function lockSavingsGoalAccounts(
-  client: PoolClient,
-  householdId: string,
-  accountIds: string[],
-): Promise<SavingsGoalAccountRow[]> {
-  const result = await client.query<SavingsGoalAccountRow>(
-    SAVINGS_GOAL_QUERIES.lockAccounts,
-    [householdId, accountIds],
-  );
-
-  return result.rows;
 }
 
 // =======================================================

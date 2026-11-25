@@ -6,12 +6,15 @@ import type { ACCOUNT_TYPES } from './account.constants.js';
 
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
-export interface AccountValidationRow {
+export interface AccountLockRow {
   id: string;
+  name: string;
   account_type: AccountType;
   currency_code: CurrencyCode;
   is_active: boolean;
 }
+
+export type AccountValidationRow = Omit<AccountLockRow, 'name'>;
 
 export interface ListAccountsQuery {
   accountType?: AccountType;

@@ -5,7 +5,8 @@ import { ERROR_CODES } from '../../errors/error-codes.js';
 
 import { getActiveCategories } from '../categories/category.db.js';
 
-import { lockRecurringTransactionAccount } from './recurring-transaction.db.js';
+import { lockAccounts } from '../accounts/account.db.js';
+import type { AccountLockRow } from '../accounts/account.types.js';
 
 import { isPositiveFiniteNumber } from '../../utils/validation.js';
 import {
@@ -13,7 +14,6 @@ import {
   RECURRING_TRANSACTION_INTERVAL_MIN,
 } from './recurring-transaction.constants.js';
 import type {
-  RecurringTransactionAccountRow,
   RecurringTransactionForUpdateRow,
   RecurringTransactionRow,
   RecurringTransactionType,
@@ -91,12 +91,8 @@ export async function getValidatedRecurringTransactionAccount(
   householdId: string,
   accountId: string,
   transactionType: RecurringTransactionType,
-): Promise<RecurringTransactionAccountRow> {
-  const account = await lockRecurringTransactionAccount(
-    client,
-    householdId,
-    accountId,
-  );
+): Promise<AccountLockRow> {
+  const [account] = await lockAccounts(client, householdId, [accountId]);
 
   if (!account) {
     throw new AppError(

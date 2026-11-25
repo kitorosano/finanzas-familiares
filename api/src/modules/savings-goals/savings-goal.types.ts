@@ -180,14 +180,6 @@ export interface VoidSavingsGoalContributionBody {
 // DATABASE ROWS
 // =======================================================
 
-export interface SavingsGoalAccountRow {
-  id: string;
-  name: string;
-  account_type: string;
-  currency_code: CurrencyCode;
-  is_active: boolean;
-}
-
 export interface SavingsGoalContributionForUpdateRow {
   id: string;
   goal_id: string;

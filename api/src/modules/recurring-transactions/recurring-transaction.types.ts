@@ -145,14 +145,6 @@ export interface RecurringTransactionForUpdateRow {
   updated_at: Date;
 }
 
-export interface RecurringTransactionAccountRow {
-  id: string;
-  name: string;
-  account_type: AccountType;
-  currency_code: CurrencyCode;
-  is_active: boolean;
-}
-
 export interface RecurringTransactionCategoryRow {
   id: string;
   category_type: CategoryType;

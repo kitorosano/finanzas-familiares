@@ -11,7 +11,6 @@ import {
 import type {
   CreateRecurringTransactionBody,
   ListRecurringTransactionsQuery,
-  RecurringTransactionAccountRow,
   RecurringTransactionForUpdateRow,
   RecurringTransactionRow,
   RecurringTransactionsListResult,
@@ -199,22 +198,6 @@ const RECURRING_TRANSACTION_QUERIES = {
     FOR UPDATE OF rt
   `,
 
-  lockAccount: `
-    SELECT
-      id::text AS id,
-      name,
-      account_type,
-      currency_code,
-      is_active
-
-    FROM accounts
-
-    WHERE household_id = $1
-      AND id = $2
-
-    FOR UPDATE
-  `,
-
   create: `
     INSERT INTO recurring_transactions (
       household_id,
@@ -363,23 +346,6 @@ export async function getRecurringTransactionForUpdate(
   const result = await client.query<RecurringTransactionForUpdateRow>(
     RECURRING_TRANSACTION_QUERIES.getForUpdate,
     [householdId, recurringTransactionId],
-  );
-
-  return result.rows[0];
-}
-
-// =======================================================
-// ACCOUNT LOCK
-// =======================================================
-
-export async function lockRecurringTransactionAccount(
-  client: PoolClient,
-  householdId: string,
-  accountId: string,
-): Promise<RecurringTransactionAccountRow | undefined> {
-  const result = await client.query<RecurringTransactionAccountRow>(
-    RECURRING_TRANSACTION_QUERIES.lockAccount,
-    [householdId, accountId],
   );
 
   return result.rows[0];

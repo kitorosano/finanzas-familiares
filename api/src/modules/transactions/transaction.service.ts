@@ -4,6 +4,7 @@ import { ERROR_CODES } from '../../errors/error-codes.js';
 import type { CurrencyCode } from '../../types/money.js';
 import { isPositiveFiniteNumber } from '../../utils/validation.js';
 
+import { lockAccounts } from '../accounts/account.db.js';
 import type { AccountValidationRow } from '../accounts/account.types.js';
 import { setAuditActor } from '../audit/audit-context.js';
 import { writeAuditLog } from '../audit/audit.db.js';
@@ -19,7 +20,6 @@ import {
   getTransactionForUpdate,
   insertTransaction,
   listTransactions as listTransactionsFromDb,
-  lockAccounts,
   updateTransaction as updateTransactionInDb,
   voidTransaction as voidTransactionInDb,
 } from './transaction.db.js';

@@ -4,7 +4,6 @@ import { db } from '../../db/pool.js';
 
 import type { HouseholdBaseCurrencyRow } from '../../types/household.js';
 import type { CurrencyCode } from '../../types/money.js';
-import type { AccountValidationRow } from '../accounts/account.types.js';
 
 import type {
   CreatedPurchaseRow,
@@ -129,19 +128,6 @@ const TRANSACTION_QUERIES = {
     FROM households
     WHERE id = $1
     FOR SHARE
-  `,
-
-  lockAccounts: `
-    SELECT
-      id::text AS id,
-      currency_code,
-      account_type,
-      is_active
-    FROM accounts
-    WHERE household_id = $1
-      AND id = ANY($2::uuid[])
-    ORDER BY id
-    FOR UPDATE
   `,
 
   insert: `
@@ -389,19 +375,6 @@ export async function getHouseholdBaseCurrency(
   );
 
   return result.rows[0];
-}
-
-export async function lockAccounts(
-  client: PoolClient,
-  householdId: string,
-  accountIds: string[],
-): Promise<AccountValidationRow[]> {
-  const result = await client.query<AccountValidationRow>(
-    TRANSACTION_QUERIES.lockAccounts,
-    [householdId, accountIds],
-  );
-
-  return result.rows;
 }
 
 export async function insertTransaction(

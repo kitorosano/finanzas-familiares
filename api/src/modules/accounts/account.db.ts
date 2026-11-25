@@ -1,6 +1,12 @@
+import type { PoolClient } from 'pg';
+
 import { db } from '../../db/pool.js';
 
-import type { AccountRow, ListAccountsQuery } from './account.types.js';
+import type {
+  AccountLockRow,
+  AccountRow,
+  ListAccountsQuery,
+} from './account.types.js';
 
 const ACCOUNT_SELECT = `
   SELECT
@@ -66,7 +72,37 @@ const ACCOUNT_QUERIES = {
       AND a.id = $2
     LIMIT 1
   `,
+  lockAccounts: `
+    SELECT
+      id::text AS id,
+      name,
+      account_type,
+      currency_code,
+      is_active
+
+    FROM accounts
+
+    WHERE household_id = $1
+      AND id = ANY($2::uuid[])
+
+    ORDER BY id
+
+    FOR UPDATE
+  `,
 } as const;
+
+export async function lockAccounts(
+  client: PoolClient,
+  householdId: string,
+  accountIds: string[],
+): Promise<AccountLockRow[]> {
+  const result = await client.query<AccountLockRow>(
+    ACCOUNT_QUERIES.lockAccounts,
+    [householdId, accountIds],
+  );
+
+  return result.rows;
+}
 
 export async function listAccounts(
   householdId: string,
